@@ -242,7 +242,7 @@
     dir.create(dirname(fpath), recursive = TRUE, showWarnings = FALSE)
     grDevices::pdf(fpath, width = width, height = height, onefile = TRUE)
     for (pg in pages) {
-      grid::grid.newpage()
+    #   grid::grid.newpage()
       grid::grid.draw(pg)
     }
     grDevices::dev.off()

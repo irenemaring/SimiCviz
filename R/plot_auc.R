@@ -228,9 +228,7 @@ plot_auc_distributions <- function(x, tf_names = NULL, labels = NULL,
     fname <- filename %||% "AUC_distributions.pdf"
     fpath <- file.path(out_dir, fname)
     dir.create(dirname(fpath), recursive = TRUE, showWarnings = FALSE)
-    grDevices::pdf(fpath, width = width, height = height, onefile = TRUE)
-    for (pg in pages) { grid::grid.newpage(); grid::grid.draw(pg) }
-    grDevices::dev.off()
+    .save_pages(pages, fpath, width, height)
     message("Saved AUC distributions to: ", fpath)
   } else {
     .draw_pages(pages)
@@ -365,9 +363,7 @@ plot_auc_cumulative <- function(x, tf_names = NULL, labels = NULL, alpha = 0.8,
     fname <- filename %||% "AUC_cumulative.pdf"
     fpath <- file.path(out_dir, fname)
     dir.create(dirname(fpath), recursive = TRUE, showWarnings = FALSE)
-    grDevices::pdf(fpath, width = width, height = height, onefile = TRUE)
-    for (pg in pages) { grid::grid.newpage(); grid::grid.draw(pg) }
-    grDevices::dev.off()
+    .save_pages(pages, fpath, width, height)
     message("Saved AUC cumulative to: ", fpath)
   } else {
     .draw_pages(pages)
@@ -470,14 +466,10 @@ plot_auc_summary_statistics <- function(x, labels = NULL, high_threshold = 0.5,
     fname <- filename %||% "AUC_summary_statistics.pdf"
     fpath <- file.path(out_dir, fname)
     dir.create(dirname(fpath), recursive = TRUE, showWarnings = FALSE)
-    grDevices::pdf(fpath, width = width, height = height, onefile = TRUE)
-    grid::grid.newpage(); grid::grid.draw(combined)
-    grDevices::dev.off()
+    .save_pages(list(combined), fpath, width, height)
     message("Saved AUC summary statistics to: ", fpath)
   } else {
-    gridExtra::grid.arrange(grobs = combined$grobs, nrow = combined$nrow, ncol = combined$ncol,
-                            top = grid::textGrob("Activity Scores Summary Statistics",
-                                                  gp = grid::gpar(fontsize = 16, fontface = "bold")))
+    .draw_pages(list(combined))
   }
   invisible(combined)
 }
@@ -610,6 +602,7 @@ export_auc_pdfs <- function(x, out_dir, prefix = "SimiCviz", labels = NULL,
   pages
 }
 
+
 #' RStudio-safe page drawing
 #' @keywords internal
 .draw_pages <- function(pages) {
@@ -621,6 +614,23 @@ export_auc_pdfs <- function(x, out_dir, prefix = "SimiCviz", labels = NULL,
                             heights = pg$heights)
   }
 }
+
+
+#' RStudio-safe page saving to PDF
+#' @keywords internal
+.save_pages <- function(pages, fpath, width, height) {
+  grDevices::pdf(fpath, width = width, height = height, onefile = TRUE)
+  for (pg in pages) {
+    gridExtra::grid.arrange(grobs   = pg$grobs,
+                            nrow    = pg$nrow,
+                            ncol    = pg$ncol,
+                            widths  = pg$widths,
+                            heights = pg$heights)
+  }
+  grDevices::dev.off()
+}
+
+
 
 #' @keywords internal
 `%||%` <- function(a, b) if (!is.null(a)) a else b
