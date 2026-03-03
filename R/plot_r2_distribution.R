@@ -19,6 +19,10 @@
 #'   (default \code{0.7}).
 #' @param nrow,ncol Optional grid layout. If both \code{NULL}, one label per
 #'   row.
+#' @param save logical; save to PDF (default \code{FALSE}).
+#' @param filename PDF filename (default \code{"R2_distributions.pdf"}).
+#' @param out_dir output directory (default \code{getwd()}).
+#' @param width,height page dimensions in inches (defaults 10 × 5*nrow).
 #'
 #' @return Called for side effects (plots). Returns \code{invisible(NULL)}.
 #' @export
@@ -26,7 +30,12 @@ plot_r2_distribution <- function(adjusted_r_squared,
                                  x = NULL,
                                  labels = NULL,
                                  threshold = 0.7,
-                                 grid = NULL) {
+                                 grid = NULL,
+                                 save = FALSE,
+                                 filename = NULL,
+                                 out_dir = getwd(),
+                                 width = 10,
+                                 height = NULL) {
 
   # --- validate adjusted_r_squared ---
   if (missing(adjusted_r_squared) || is.null(adjusted_r_squared) || !is.list(adjusted_r_squared)) {
@@ -67,6 +76,10 @@ plot_r2_distribution <- function(adjusted_r_squared,
 
   n_labels <- length(use_labels)
 
+  # --- color and name maps from object (same approach as plot_auc.R) ---
+  lab_names_map <- if (!is.null(x) && length(x@label_names) > 0L) x@label_names else character()
+  col_map       <- if (!is.null(x) && length(x@colors)      > 0L) x@colors      else character()
+
   # --- grid layout ---
   if (is.null(grid)){
     nrow <- n_labels
@@ -79,47 +92,72 @@ plot_r2_distribution <- function(adjusted_r_squared,
     ncol <- ifelse(as.integer(grid[2]) == 0, ceiling(n_labels / nrow), min(as.integer(grid[2]), ceiling(n_labels / nrow))) 
   }
 
-  op <- par(no.readonly = TRUE)
-  on.exit(par(op), add = TRUE)
-  par(mfrow = c(nrow, ncol))
+  if (is.null(height)) height <- 5 * nrow
 
-  # --- iterate over labels ---
-  for (i in seq_len(n_labels)) {
-    lab_name <- use_labels[[i]]
-    r2_vals  <- obj[[lab_name]]
+  # ---- plotting helper (draws into current device) ----
+  .draw_all <- function() {
+    op <- par(no.readonly = TRUE)
+    on.exit(par(op), add = TRUE)
+    par(mfrow = c(nrow, ncol))
 
-    if (is.null(r2_vals) || !length(r2_vals)) {
-      plot.new()
-      title(main = paste("No data for label", lab_name))
-      next
+    for (i in seq_len(n_labels)) {
+      lab_name   <- use_labels[[i]]
+      r2_vals    <- obj[[lab_name]]
+
+      if (is.null(r2_vals) || !length(r2_vals)) {
+        plot.new(); title(main = paste("No data for label", lab_name)); next
+      }
+
+      sel        <- r2_vals > threshold
+      n_selected <- sum(sel, na.rm = TRUE)
+      mean_r2    <- if (n_selected > 0) mean(r2_vals[sel], na.rm = TRUE) else 0
+
+      lab_id_num <- tryCatch(as.integer(lab_name),
+                             warning = function(.) NA_integer_,
+                             error   = function(.) NA_integer_)
+      if (is.na(lab_id_num)) lab_id_num <- i
+      
+      # Display name: use label_names slot if available, else "Label X"
+      lab_display <- if (lab_name %in% names(lab_names_map))
+        unname(lab_names_map[lab_name])
+      else
+        paste0("Label ", lab_name)
+
+      # Color: use colors slot if available, else cycle default palette
+      lab_color <- if (lab_name %in% names(col_map))
+        unname(col_map[lab_name])
+      else
+        default_colors[(i - 1L) %% length(default_colors) + 1L]
+
+      n_tfs <- if (!is.null(sim_obj)) max(100, length(sim_obj@tf_ids)) else 100L
+
+      main_title <- sprintf(
+        "%s\nTargets selected: %d, Mean R\u00b2: %.3f",
+        lab_display, n_selected, mean_r2
+      )
+
+      r2_histogram(
+        adjusted_r_squared = r2_vals,
+        threshold          = threshold,
+        n_tfs              = n_tfs,
+        main               = main_title,
+        col                = lab_color
+      )
     }
-
-    sel        <- r2_vals > threshold
-    n_selected <- sum(sel, na.rm = TRUE)
-    mean_r2    <- if (n_selected > 0) mean(r2_vals[sel], na.rm = TRUE) else 0
-
-    lab_id_num <- tryCatch(as.integer(lab_name),
-                           warning = function(.) NA_integer_,
-                           error   = function(.) NA_integer_)
-    if (is.na(lab_id_num)) lab_id_num <- i
-
-    lab_display <- .get_label_name(sim_obj, lab_id_num)
-    lab_color   <- .get_label_color(sim_obj, lab_id_num, idx = i)
-
-    n_tfs <- max(100, length(x@tf_ids))
-    main_title <- sprintf(
-      "%s\nTargets selected: %d, Mean R\u00b2: %.3f",
-      lab_display, n_selected, mean_r2
-    )
-
-    r2_histogram(
-      adjusted_r_squared = r2_vals,
-      threshold          = threshold,
-      n_tfs              = n_tfs,
-      main               = main_title,
-      col                = lab_color
-    )
   }
+
+  if (save) {
+    fname <- filename %||% "R2_distributions.pdf"
+    fpath <- file.path(out_dir, fname)
+    dir.create(dirname(fpath), recursive = TRUE, showWarnings = FALSE)
+    grDevices::pdf(fpath, width = width, height = height, onefile = TRUE)
+    .draw_all()
+    grDevices::dev.off()
+    message("Saved R² distributions to: ", fpath)
+  } else {
+    .draw_all()
+  }
+
   invisible(NULL)
 }
 

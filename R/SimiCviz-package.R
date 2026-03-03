@@ -196,7 +196,7 @@ load_cell_labels <- function(x) {
 .parse_cell_labels_df <- function(df) {
   if (ncol(df) > 2L){
     message("Cell labels file contains extra columns")
-    print(colnames(df))
+    message(paste(colnames(df), collapse = " / "))
   }
   if (all(c("cell", "label") %in% tolower(colnames(df)))) {
     idx_cols <- which( tolower(colnames(df))%in% c("cell", "label"))
@@ -466,44 +466,4 @@ setCellLabels <- function(x, cell_labels) {
   }
 
   x
-}
-
-#' Get a human-readable label name
-#'
-#' If no custom label name is set, returns \code{paste0('Label ', label)}.
-#'
-#' @param x \code{SimiCvizExperiment}.
-#' @param label numeric or character label.
-#'
-#' @return character
-#' @keywords internal
-.get_label_name <- function(x, label) {
-  lab_id <- as.character(as.integer(label))
-  if (!is.null(x) && is.SimiCvizExperiment(x) &&
-      length(x@label_names) > 0L &&
-      lab_id %in% names(x@label_names)) {
-    return(x@label_names[[lab_id]])
-  }
-  paste0("Label ", label)
-}
-
-#' Get a color for a label
-#'
-#' Uses object-specific colors when available; otherwise falls back to a small default palette.
-#'
-#' @param x \code{SimiCvizExperiment}.
-#' @param label numeric or character label.
-#' @param idx integer index used for cycling default colors.
-#'
-#' @return character color specification.
-#' @keywords internal
-.get_label_color <- function(x, label, idx = 1L) {
-  default_colors <- c("steelblue", "orange", "forestgreen", "purple", "brown")
-  lab_id <- as.character(as.integer(label))
-  if (!is.null(x) && is.SimiCvizExperiment(x) &&
-      length(x@colors) > 0L &&
-      lab_id %in% names(x@colors)) {
-    return(x@colors[[lab_id]])
-  }
-  default_colors[(idx - 1L) %% length(default_colors) + 1L]
 }
