@@ -89,17 +89,25 @@ head(auc_collect[,1:5])
 
 ```
 
-If you want to access to the raw activity scores matrices you can use the read_pickle function 
+If you want to access to the raw activity scores matrices you can use the read_auc_csv function
 ```{r}
 auc_file <- system.file("extdata", file.path("outputSimic/matrices/example1"
                         ,"example1_L1_0.01_L2_0.001_wAUC_matrices_filtered_BIC.pickle"), 
                             package = "SimiCviz")
-auc_pkl <- read_pickle(auc_file)
+auc_pkl <- read_auc_pickle(auc_file)
+
 print(class(auc_pkl))
 print(length(auc_pkl))
 ```
+
+For full plotting functionalities you will need to provide the cell labels id.
+
 ## Load SimiCvizExperiment
 With these `SimiCPipeline` output we can generate the `SimiCvizExperiment` object easily.
+```{r}
+cell_labels_path <- system.file("extdata",file.path("inputFiles","treatment_annotation.csv"), package = "SimiCviz")
+```
+
 
 ```{r}
 # all(out$TF_ids%in%colnames(auc_pkl[[1]])) # TRUE
@@ -107,13 +115,15 @@ With these `SimiCPipeline` output we can generate the `SimiCvizExperiment` objec
 
 simic2 <- SimiCvizExperiment(weights = weights_results,
                              auc = auc_pkl,
+                             cell_labels = cell_labels_path,
                              tf_ids = out$TF_ids,
                              target_ids = out$query_targets,
                              label_names = c("control","PD-L1","DAC","Combo"),
                              colors = c("#e0e0e0", "#a8c8ff", "#ffb6b6", "#c1a9e0"))
 simic2
 ```
-### Other data structure
+
+### Other data structures
 
 Alternatively you can load the results from other methods in csv format. 
 
@@ -129,8 +139,8 @@ auc_df <- read_auc_csv(auc_path)
 head(auc_df)
 
 # Loading using the paths
-simic3 <- load_SimiCviz_from_csv(weights_file = weight_path, 
-                                 auc = auc_path, 
+simic3 <- load_from_csv(weights_file = weight_path, 
+                                #  auc = auc_path, 
                                  meta = list(lambda1 = 0.01, lambda2= 0.001))
 simic3 <- setLabelNames(simic3, label_names  = c("control","PD-L1","DAC","Combo"),
                         colors = c("#e0e0e0", "#a8c8ff", "#ffb6b6", "#c1a9e0"))
@@ -325,6 +335,28 @@ plot_auc_cumulative(simic,
                     grid = c(1, 2),
                     save = FALSE)
 ```
+
+# Additional functions
+
+You can convert the activity scores file into a data.frame of cells x TFs with the following function:
+```{r eval = FALSE}
+auc_file <- system.file("extdata", file.path("outputSimic/matrices/example1"
+                        ,"example1_L1_0.01_L2_0.001_wAUC_matrices_filtered_BIC.pickle"), 
+                            package = "SimiCviz")
+auc_pkl <- read_auc_pickle(auc_file)
+
+cell_labels_path <- system.file("extdata",file.path("inputFiles","treatment_annotation.csv"), package = "SimiCviz")
+cell_labels = load_cell_labels(cell_labels_path)
+auc_df <- auc_list_to_df(auc_pkl, cell_labels_df = cell_labels )
+head(auc_df[,1:5])
+
+save_collected_auc(auc_df, file = "./collected_auc.csv", overwrite = FALSE)
+```
+
+
+
+
+
 
 ## ECDF-AUC metrics table
 

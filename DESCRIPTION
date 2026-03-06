@@ -1,6 +1,6 @@
 Package: SimiCviz
 Type: Package
-Title: Visualization Tools for Gene Regulatory Network Outputs
+Title: Visualization Tools for Gene Regulatory Network Analysis
 Version: 0.1.0
 Authors@R: 
     person(given = "Irene",
@@ -9,11 +9,10 @@ Authors@R:
            email = "imarin.4@alumni.unav.es")
 Description: 
     Visualization and export utilities for SimiC and SimiCPipeline outputs.
-    The package focuses on reading SimiC-style results (e.g., weights, AUC
-    metrics) from CSV files, organizing them, generating publication-ready
-    plots (networks, heatmaps, distributions), and exporting figures (PDF)
-    and processed tables (CSV) into a reproducible, ordered directory 
-    hierarchy.
+    The package focuses on importing SimiC-style results (e.g., weights, AUC
+    metrics) from pickle/CSV files, processing and generating publication-ready
+    plots (networks, heatmaps, distributions) and tables saved into a reproducible, 
+    ordered directory hierarchy.
 License: MIT
 Encoding: UTF-8
 LazyData: true

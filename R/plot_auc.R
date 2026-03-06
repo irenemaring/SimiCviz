@@ -165,7 +165,10 @@ plot_auc_distributions <- function(x, tf_names = NULL, labels = NULL,
                                    width = 14, height = NULL) {
   if (!requireNamespace("ggplot2",   quietly = TRUE)) stop("ggplot2 required")
   if (!requireNamespace("gridExtra", quietly = TRUE)) stop("gridExtra required")
-
+  if (length(x@auc) == 0L){
+    message("No AUC data found in the SimiCvizExperiment object; cannot plot AUC distributions.")
+    return(invisible(NULL))
+  }
   labels        <- .resolve_labels(x, labels)
   lab_names     <- x@label_names
   tf_names      <- .resolve_tf_names(x, tf_names)
@@ -282,7 +285,10 @@ plot_auc_cumulative <- function(x, tf_names = NULL, labels = NULL, alpha = 0.8,
                                 out_dir = getwd(), width = 14, height = NULL) {
   if (!requireNamespace("ggplot2",   quietly = TRUE)) stop("ggplot2 required")
   if (!requireNamespace("gridExtra", quietly = TRUE)) stop("gridExtra required")
-
+    if (length(x@auc) == 0L){
+    message("No AUC data found in the SimiCvizExperiment object; cannot plot AUC cumulative curves")
+    return(invisible(NULL))
+  }
   labels        <- .resolve_labels(x, labels)
   tf_names      <- .resolve_tf_names(x, tf_names)
   n_tfs         <- length(tf_names)

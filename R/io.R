@@ -1,4 +1,6 @@
-#' Read picklefiles
+##  Simple Import Functions ---------------------------------------------- 
+
+#' Read pickle files
 #' 
 #' @param file path to the pickle file
 #' @return object containing the contents of the pickle file
@@ -7,8 +9,11 @@ read_pickle <- function(file) {
   if (!requireNamespace("reticulate", quietly = TRUE)) {
     stop("Package 'reticulate' is required to read pickle files. Please install it.")
   }
+  if (all(sapply(c("pickle$", "pkl$"), grepl, file), USE.NAMES = FALSE)) {
+     stop("Expected a pickle file with extension .pickle or .pkl: ")
+  }
   if (!file.exists(file)) {
-    stop("File does not exist: ", file)
+    stop(sprintf("File % does not exist.", file))
   }
   .ensure_python()
   pickle <- reticulate::import("pickle")
@@ -20,68 +25,34 @@ read_pickle <- function(file) {
   return(results_pickle)
 }
 
-#' Read SimiC-style weights from a pickle file
+#' Read SimiCPipeline output weights (pickle file)
 #'
 #' @param file path to the pickle file containing SimiC weights.
-#' @return A list with weight_dic, adjusted_r_squared, standard_error,
-#'         TF_ids, query_targets.
+#' @return A list of length n_labels (phenotypes) with GRN weight matrices (TFs x targets).
 #' @export
 read_weights_pickle <- function(file) {
-  
   weight_dict <- read_pickle(file)  
-  weight_mat <- weight_dict$weight_dic
-  weight_mat_export <- list()
-  
-  for (key in names(weight_mat)) {
-    tmp_weights <-  as.data.frame(weight_mat[[key]])
+  if (!all(names(weight_dict) %in% c("weight_dic", "adjusted_r_squared", 
+                                   "standard_error", "TF_ids", "query_targets"))) {
+    stop("Unexpected structure in weights pickle file: %s. Make sure the weights file is correct", file)
+  }
+  weight_mat_list <- weight_dict$weight_dic
+  weight_mat_out <- list()
+  # Remove bias term and add rownames and colnames to each weight matrix
+  for (key in names(weight_mat_list)) {
+    tmp_weights <-  as.data.frame(weight_mat_list[[key]])
     bias_idx <- nrow(tmp_weights)
     tmp_weights <- tmp_weights[-bias_idx, , drop = FALSE]
     rownames(tmp_weights) <- weight_dict$TF_ids
     colnames(tmp_weights) <- weight_dict$query_targets
     
-    weight_mat_export[[key]] <- tmp_weights
+    weight_mat_out[[key]] <- tmp_weights
   }
   
-  return(weight_mat_export)
+  return(weight_mat_out)
 }
 
-# -----WEIGHTS I/O pipeline ---------------------------------------------------
-#' Convert a long-format weights data.frame to a list of TF × target matrices
-#'
-#' Used internally by \code{\link{load_SimiCviz_from_csv}} to transform
-#' a data.frame with columns \code{tf}, \code{target}, \code{weight}
-#' (and optionally \code{label}) into the named-list-of-matrices format
-#' expected by \code{\link{SimiCvizExperiment}}.
-#'
-#' @param df A data.frame with at least columns \code{tf}, \code{target},
-#'   \code{weight}. If a \code{label} column is present, one matrix is
-#'   created per unique label; otherwise a single-element list is returned.
-#' @return A named list of data.frames (TFs in rows, targets in columns).
-#' @keywords internal
-.convert_weights_df_to_list <- function(df) {
-  labels <- unique(df$label)
-  result <- list()
-  for (lab in labels) {
-    sub <- df[df$label == lab, , drop = FALSE]
-    tfs     <- unique(sub$tf)
-    targets <- unique(sub$target)
-
-    mat <- matrix(0, nrow = length(tfs), ncol = length(targets),
-                  dimnames = list(tfs, targets))
-
-    for (i in seq_len(nrow(sub))) {
-      mat[sub$tf[i], sub$target[i]] <- sub$weight[i]
-    }
-
-    result[[as.character(lab)]] <- as.data.frame(mat)
-  }
-
-  result
-}
-
-# ---- AUC I/O pipeline ---------------------------------------------------
-
-#' Read AUC matrices from a pickle file
+#' Read SimiCPipeline output AUC matrices (pickle file)
 #'
 #' Returns a list of matrices (one per label), each with cells in rows and
 #' TFs in columns.
@@ -95,141 +66,6 @@ read_auc_pickle <- function(file) {
     stop("Expected a list of AUC matrices in pickle file: ", file)
   }
   auc_list
-}
-
-#' Subset per-label AUC matrices using cell labels
-#'
-#' Given a list of AUC matrices (one per label) and a cell-labels data.frame,
-#' subsets each matrix to include only the cells belonging to that label.
-#'
-#' @param auc_list Named list of AUC matrices (cells × TFs). Names should
-#'   correspond to label identifiers (e.g. "0", "1").
-#' @param cell_labels A data.frame with columns \code{cell} and \code{label},
-#'   as returned by \code{\link{load_cell_labels}}.
-#' @return A named list of AUC data.frames, each subset to its label's cells.
-#' @export
-subset_auc_by_labels <- function(auc_list, cell_labels) {
-  if (!is.data.frame(cell_labels) ||
-      !all(c("cell", "label") %in% colnames(cell_labels))) {
-    stop("`cell_labels` must be a data.frame with columns 'cell' and 'label'.")
-  }
-
-  labels <- unique(cell_labels$label)
-  result <- list()
-
-  for (lab in labels) {
-    lab_key <- as.character(lab)
-    cells_in_label <- cell_labels$cell[cell_labels$label == lab]
-
-    # Find matching matrix in auc_list
-    if (lab_key %in% names(auc_list)) {
-      mat <- auc_list[[lab_key]]
-    } else if (as.integer(lab) + 1L <= length(auc_list)) {
-      # fallback: use positional index (0-based label → 1-based index)
-      mat <- auc_list[[as.integer(lab) + 1L]]
-    } else {
-      warning(sprintf("No AUC matrix found for label '%s'. Skipping.", lab_key))
-      next
-    }
-
-    mat <- as.data.frame(mat)
-
-    # Assign cell IDs as rownames if cell_labels has only label info
-    # (i.e. generic cell_1, cell_2 names), match by position
-    available_rows <- rownames(mat)
-    matched <- intersect(cells_in_label, available_rows)
-
-    if (length(matched) > 0L) {
-      mat <- mat[matched, , drop = FALSE]
-    } else {
-      # positional matching: assume same order as cell_labels within label
-      n_cells <- length(cells_in_label)
-      if (nrow(mat) >= n_cells) {
-        mat <- mat[seq_len(n_cells), , drop = FALSE]
-        rownames(mat) <- cells_in_label
-      } else {
-        warning(sprintf(
-          "Label '%s': cell count (%d) exceeds AUC matrix rows (%d). Using all rows.",
-          lab_key, n_cells, nrow(mat)
-        ))
-        rownames(mat) <- cells_in_label[seq_len(nrow(mat))]
-      }
-    }
-
-    result[[lab_key]] <- mat
-  }
-
-  result
-}
-
-#' Collect per-label AUC matrices into a single cells × TF data.frame
-#'
-#' Merges a list of per-label AUC data.frames (each with cells in rows and
-#' TFs in columns) into one data.frame. This is the canonical "collected"
-#' format used by \code{SimiCvizExperiment@auc}.
-#'
-#' Compatible with any GRN method that produces per-cell TF activity scores.
-#'
-#' @param auc_list Named list of data.frames (cells × TFs), one per label.
-#' @param cell_labels Optional data.frame with columns \code{cell} and
-#'   \code{label}. If provided, a \code{label} column is appended.
-#' @return A data.frame with cells in rows and TFs (+ optionally \code{label})
-#'   in columns. Row names are cell identifiers.
-#' @export
-collect_auc <- function(auc_list, cell_labels = NULL) {
-  if (!is.list(auc_list) || length(auc_list) == 0L) {
-    stop("`auc_list` must be a non-empty list of data.frames.")
-  }
-
-  # Ensure all elements are data.frames
-  auc_list <- lapply(auc_list, as.data.frame)
-
-  # Full union of TF columns across all labels
-  all_tf_cols <- unique(unlist(lapply(auc_list, colnames)))
-
-  # Align each matrix to the full set of TFs, filling missing with NA
-  auc_list <- lapply(auc_list, function(m) {
-    missing_cols <- setdiff(all_tf_cols, colnames(m))
-    if (length(missing_cols) > 0L) {
-      for (col in missing_cols) {
-        m[[col]] <- NA_real_
-      }
-    }
-    m[, all_tf_cols, drop = FALSE]
-  })
-
-  collected <- do.call(rbind, auc_list)
-
-  # Optionally add label column
-  if (!is.null(cell_labels) && is.data.frame(cell_labels) &&
-      all(c("cell", "label") %in% colnames(cell_labels))) {
-    # Match by rownames → cell
-    idx <- match(rownames(collected), cell_labels$cell)
-    if (!all(is.na(idx))) {
-      collected$label <- cell_labels$label[idx]
-    }
-  }
-
-  collected
-}
-
-#' Save collected AUC data.frame to CSV
-#'
-#' Writes the cells × TF collected AUC data.frame to a CSV file,
-#' preserving cell IDs as row names.
-#'
-#' @param auc_collected A data.frame as returned by \code{\link{collect_auc}}.
-#' @param file Output CSV file path.
-#' @param overwrite Logical; overwrite if file exists (default FALSE).
-#' @return Invisibly, the file path.
-#' @export
-save_collected_auc <- function(auc_collected, file, overwrite = FALSE) {
-  if (!overwrite && file.exists(file)) {
-    stop("File already exists and overwrite = FALSE: ", file)
-  }
-  dir.create(dirname(file), recursive = TRUE, showWarnings = FALSE)
-  utils::write.csv(auc_collected, file, row.names = TRUE)
-  invisible(file)
 }
 
 #' Load a collected AUC CSV into a data.frame
@@ -253,7 +89,7 @@ load_collected_auc <- function(file, ...) {
 
 # ---- Legacy / CSV readers -----------------------------------------------
 
-#' Read Long-style TF-target weights from CSV
+#' Read Long-style TF-target weights from CSV (compatibility)
 #'
 #' @param file path to a CSV file containing TF-target weights.
 #'   Expected minimal columns: \code{tf}, \code{target}, \code{weight}.
@@ -266,15 +102,18 @@ read_weights_csv <- function(file, ...) {
   df <- utils::read.csv(file, header = TRUE,
                          stringsAsFactors = FALSE, ...)
   required <- c("tf", "target", "weight")
-  missing <- setdiff(required, colnames(df))
+  missing <- setdiff(required, tolower(colnames(df)))
   if (length(missing) > 0) {
     stop("Missing required columns in weights CSV: ",
          paste(missing, collapse = ", "))
   }
+  if (!"label" %in% tolower(colnames(df))) {
+    warning("'label' column not found in weights CSV. Phenotype-specific weights will not be supported.")
+  }
   df
 }
 
-#' Read SimiC-style AUC results from CSV
+#' Read SimiC-style AUC results from CSV (compatibility)
 #'
 #' @param file path to a CSV file containing AUC metrics.
 #'   Expected columns include at least \code{cell}, \code{tf}, and \code{score}.
@@ -293,6 +132,149 @@ read_auc_csv <- function(file, ...) {
   df
 }
 
+# -----WEIGHTS I/O pipeline ---------------------------------------------------
+
+#' Convert a long-format weights data.frame to a list of TF × target matrices
+#'
+#' Used internally by \code{\link{load_SimiCviz_from_csv}} to transform
+#' a data.frame with columns \code{tf}, \code{target}, \code{weight}
+#' (and optionally \code{label}) into the named-list-of-matrices format
+#' expected by \code{\link{SimiCvizExperiment}}.
+#'
+#' @param df A data.frame with at least columns \code{tf}, \code{target},
+#'   \code{weight}. If a \code{label} column is present, one matrix is
+#'   created per unique label; otherwise a single-element list is returned.
+#' @return A named list of data.frames (TFs in rows, targets in columns).
+#' @keywords internal
+#' 
+.convert_weights_df_to_list <- function(df) {
+
+  # Split by label if present
+  split_df <- if ("label" %in% tolower(colnames(df))) {
+    split(df[, setdiff(names(df), "label")], df$label)
+  } else {
+    list(`0` = df)
+  }
+
+  result <- lapply(split_df, function(sub) {
+
+    # Check duplicates within subset
+    if (any(duplicated(sub[c("tf", "target")]))) {
+      stop("Duplicate tf-target pairs found in weights data.frame.
+           Please ensure each tf-target pair has a unique weight value.")
+    }
+
+    sub %>%
+      tidyr::pivot_wider(
+        names_from = target,
+        values_from = weight,
+        values_fill = list(weight = 0)
+      ) %>%
+      tibble::column_to_rownames("tf") %>%
+      as.data.frame()
+  })
+
+  result
+}
+
+# ---- AUC I/O pipeline ---------------------------------------------------
+
+#' Collect per-label AUC matrices using cell labels
+#'
+#' Given a list of AUC matrices (one per label) and a cell-labels data.frame,
+#' subsets each matrix to include only the cells belonging to that label and collects them into a single data.frame. 
+#' This is a helper function to transform raw per-label AUC outputs into the "collected" format used by \code{SimiCvizExperiment@auc}.
+#'
+#' @param auc_list Named list of AUC matrices (cells × TFs). Names should
+#'   correspond to label identifiers (e.g. "0", "1").
+#' @param cell_labels A data.frame with columns \code{cell} and \code{label},
+#'   as returned by \code{\link{load_cell_labels}}.
+#' @return A data.frame with cells in rows and TFs in columns, containing the activity scores for the specific labels.
+#' @export
+
+auc_list_to_df <- function(auc_list, cell_labels_df) {
+  if (!is.list(auc_list) || length(auc_list) == 0L) {
+    stop("`auc_list` must be a non-empty list of AUC matrices.")
+  }
+  if (!is.data.frame(cell_labels_df) ||
+      !all(c("cell", "label") %in% colnames(cell_labels_df))) {
+    stop("`cell_labels_df` must be a data.frame with columns 'cell' and 'label'.")
+  }
+
+  labels <- sort(unique(cell_labels_df$label))
+  result <- list()
+
+  for (lab in labels) {
+    lab_key <- as.character(lab)
+    cells_in_label <- cell_labels_df$cell[cell_labels_df$label == lab]
+
+    # Find matching matrix in auc_list
+    if (lab_key %in% names(auc_list)) {
+      mat <- auc_list[[lab_key]]
+    } else if (as.integer(lab) + 1L <= length(auc_list)) {
+      # fallback: use positional index (0-based label → 1-based index) asumes labels are in order in auc_list
+      mat <- auc_list[[as.integer(lab) + 1L]]
+    } else {
+      warning(sprintf("No AUC matrix found for label '%s'. Skipping.", lab_key))
+      next
+    }
+
+    mat <- as.data.frame(mat)
+
+    
+    auc_cell_ids <- rownames(mat)
+    if (all(cells_in_label %in% auc_cell_ids)) {
+      
+      # direct subsetting the auc matrix by cell labels for label i
+      
+      mat_sub <- mat[cells_in_label, , drop = FALSE]
+    
+    }  else if (length(intersect(cells_in_label, auc_cell_ids)) > 0L){
+
+      warning(sprintf(
+        "Label '%s': some cells in cell_labels_df are not found in AUC matrix rownames. Subsetting by intersection.",
+        lab_key
+      ))
+
+      matched <- intersect(cells_in_label, auc_cell_ids)
+      mat_sub <- mat[matched, , drop = FALSE]
+
+    }  else if (length(intersect(cells_in_label, auc_cell_ids)) == 0L ) {
+      # If cell_labels_df has only label info (i.e. loaded with .parse_cell_labels_vector -> cell_1, cell_2 names), match by position
+      warning(sprintf(
+        "Label '%s': cells in cell_labels_df are not found in AUC matrix rownames. Attempting positional matching.",
+        lab_key
+      ))
+      
+      cell_idx <- as.integer(gsub("cell_", "", cells_in_label))
+      
+      # Check that index is within bounds of the AUC matrix
+      
+      if (max(cell_idx) > nrow(mat)){
+        stop(sprintf(
+          "Label '%s': cell index derived from cell_labels_df exceeds AUC matrix rows. Cannot subset.",
+          lab_key
+        ))
+      }
+      
+      mat_sub <- mat[cell_idx, , drop = FALSE]
+      
+      } else {
+        stop("Label '%s': Double check input auc or cell_labels. Cannot subset.", lab_key)
+      }
+
+
+    result[[lab_key]] <- mat_sub
+  }
+
+  result
+
+  # Output collected format
+  auc_collected = dplyr::bind_rows(result)
+
+  return(auc_collected)
+}
+
 # ---- Main pipeline loader -----------------------------------------------
 
 #' Create a SimiCvizExperiment from SimiCPipeline output path
@@ -300,7 +282,9 @@ read_auc_csv <- function(file, ...) {
 #' Loads weights and AUC data following this priority chain for AUC:
 #' \enumerate{
 #'   \item Collected CSV (cells × TF, all labels merged)
-#'   \item Per-label pickle → subset by cell labels → collect → save CSV
+#'         load_collected_auc
+#'   \item Per-label pickle → collect → save CSV
+#'         read_auc_pickle → auc_list_to_df → save_collected_auc
 #' }
 #'
 #' The canonical AUC format stored in \code{SimiCvizExperiment@auc} is always
@@ -328,15 +312,17 @@ load_SimiCPipeline <- function(project_dir,
   }
 
   matrix_dir <- file.path(project_dir, "outputSimic/matrices", run_name)
+  
   if (!dir.exists(matrix_dir)) {
-    stop("Matrix directory does not exist for the specified run_name: ", matrix_dir)
+    stop("Matrix directory does not exist for the specified project_dir and run_name: ", matrix_dir)
   }
 
   base_name <- paste0(run_name, "_L1_", lambda1, "_L2_", lambda2, "_")
-  input_files  <- list.files(file.path(project_dir, "inputFiles"), full.names = TRUE)
-  output_files <- list.files(matrix_dir, pattern = base_name, full.names = TRUE)
+  input_files  <- list.files(file.path(project_dir, "inputFiles"), full.names = TRUE) # For cell labels
+  output_files <- list.files(matrix_dir, pattern = base_name, full.names = TRUE) # For weights and AUC
 
   # ---- Load weights ----
+  # Work with filtered weights
   weights_file <- output_files[grepl("simic_matrices_filtered_BIC\\.pickle$", output_files)]
 
   if (length(weights_file) == 0L) {
@@ -357,6 +343,7 @@ load_SimiCPipeline <- function(project_dir,
   r2_file <- out$adjusted_r_squared
   TF_ids        <- out$TF_ids
   query_targets <- out$query_targets
+
   meta$adjusted_r_squared <- r2_file
   meta$run_name <- run_name
   meta$lambda1  <- lambda1
@@ -393,11 +380,11 @@ load_SimiCPipeline <- function(project_dir,
 
       # Step 3: Subset and collect only if cell labels are available
       if (!is.null(cell_labels_df)) {
-        auc_list_subset <- subset_auc_by_labels(auc_list_raw, cell_labels_df)
+        # auc_list_subset <- subset_auc_by_labels(auc_list_raw, cell_labels_df)
 
         # Step 4: Collect into single cells × TF data.frame
-        auc_collected <- collect_auc(auc_list_subset, cell_labels = cell_labels_df)
-
+        # auc_collected <- collect_auc(auc_list_subset, cell_labels = cell_labels_df)
+        auc_collected  <- auc_list_to_df(auc_list_raw, cell_labels_df)
         # Step 5: Save collected CSV for future fast loading
         collected_csv_path <- file.path(
           matrix_dir,
@@ -414,7 +401,8 @@ load_SimiCPipeline <- function(project_dir,
           "Cell labels are not available. Cannot produce a collected AUC ",
           "data.frame with unique cell identifiers. AUC will be stored as a ",
           "raw per-label list. Provide cell labels via `setCellLabels()` and ",
-          "then use subset_auc_by_labels`()`and `collect_auc()` to generate the collected format."
+          # "then use subset_auc_by_labels`()`and `collect_auc()` to generate the collected format."
+            "then use `auc_list_to_df()` to generate the collected format."
         )
         auc_collected <- NULL
       }
@@ -428,7 +416,7 @@ load_SimiCPipeline <- function(project_dir,
     if (!identical(sort(tf_cols_auc), sort(TF_ids))) {
       warning("TFs in AUC (", paste(tf_cols_auc, collapse = ", "),
               ") do not exactly match TFs in weights (",
-              paste(meta$TF_ids, collapse = ", "), ").")
+              paste(TF_ids, collapse = ", "), ").")
     }
   }
   
@@ -464,8 +452,6 @@ load_SimiCPipeline <- function(project_dir,
     weights     = weights,
     auc         = auc_slot,
     cell_labels = cell_labels_df,
-    tf_ids      = TF_ids,
-    target_ids  = query_targets,
     meta        = meta
   )
 
@@ -473,7 +459,6 @@ load_SimiCPipeline <- function(project_dir,
 }
 
 # ---- CSV-based loader ----------------------------------------------------
-
 
 #' Create a SimiCvizExperiment from CSV files
 #'
@@ -484,31 +469,53 @@ load_SimiCPipeline <- function(project_dir,
 #'
 #' @return \code{\link{SimiCvizExperiment}} object.
 #' @export
-load_SimiCviz_from_csv <- function(weights_file,
-                                   auc_file = NULL,
-                                   meta = list()) {
+load_from_csv <- function(weights_file,
+                          auc_file = NULL,
+                          cell_labels = NULL,
+                          meta = list()) {
   weight_df <- read_weights_csv(weights_file)
   weights   <- .convert_weights_df_to_list(weight_df)
 
-  tf_ids     <- unique(weight_df$tf)
-  target_ids <- unique(weight_df$target)
-
   auc <- if (!is.null(auc_file)) {
+    if (is.null(cell_labels)) {
+      message("`cell_labels` are required if auc is provided to construct a SimiCvizExperiment.")
+      stop("Please provide a valid `cell_labels` data.frame or file path.")
+    }
     list(collected = read.csv(auc_file))
   } else {
-    list()
+    auc  <- NULL
   }
+
 
   SimiCvizExperiment(
     weights    = weights,
     auc        = auc,
-    tf_ids     = tf_ids,
-    target_ids = target_ids,
+    cell_labels = NULL,
     meta       = meta
   )
 }
 
 # ---- Export --------------------------------------------------------------
+
+#' Save collected AUC data.frame to CSV
+#'
+#' Writes the cells × TF collected AUC data.frame to a CSV file,
+#' preserving cell IDs as row names.
+#'
+#' @param df A data.frame as returned by \code{\link{auc_list_to_df}}.
+#' @param file Output CSV file path.
+#' @param overwrite Logical; overwrite if file exists (default FALSE).
+#' @return Invisibly, the file path.
+#' @export
+save_collected_auc <- function(df, file, overwrite = FALSE) {
+  if (!overwrite && file.exists(file)) {
+    stop("File already exists and overwrite = FALSE: ", file)
+  }
+  dir.create(dirname(file), recursive = TRUE, showWarnings = FALSE)
+  utils::write.csv(df, file, row.names = TRUE)
+  message("Collected AUC saved to: ", file)
+  invisible(file)
+}
 
 #' Export SimiCvizExperiment tables to CSV
 #'

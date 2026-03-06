@@ -101,13 +101,6 @@ setMethod("show", "SimiCvizExperiment", function(object) {
   } else {
     cat(" AUC collected: none\n")
   }
-  # if (!has_auc_df && has_perlab){
-  #   auc_list <- object@auc$labelled
-  #   auc_df <- auc_list[[1]]
-  #   auc_tfs <- setdiff(colnames(auc_list[[1]]), "label")
-  #   cat(sprintf(" AUC: labelled list of %d (%d cells x %d TFs)", length(auc_list), nrow(auc_df), length(auc_tfs)))
-  #   cat("\n")
-  # }
 
   # Cell labels
   if (n_cells > 0L) {
@@ -217,6 +210,9 @@ load_cell_labels <- function(x) {
 }
 
 .parse_cell_labels_file <- function(path) {
+  if(!file.exists(path)){
+    stop(sprintf("File not found: %s", path))
+  }
   # try comma first, then tab
   df <- tryCatch(
     utils::read.csv(path, stringsAsFactors = FALSE),
@@ -268,60 +264,95 @@ load_cell_labels <- function(x) {
 SimiCvizExperiment <- function(weights = NULL,
                                auc = NULL,
                                cell_labels = NULL,
-                               tf_ids = NULL,
-                               target_ids = NULL,
-                               label_names = character(),
-                               colors = character(),
+                               label_names = NULL,
+                               colors = NULL,
                                meta = list()) {
   # --- weights ---
-  if (is.null(weights)) {
-    weights <- list()
-  } else if (!is.list(weights)) {
-    stop("`weights` must be a list (e.g. one element per label).")
-  }
 
-  # --- auc: normalize to list(collected = df) or list(per_label = auc_list) ---
+  if (is.null(weights)) {
+    message("`weights` is required to construct a SimiCvizExperiment.")
+    stop("Please provide a valid `weights` list or data.frame.")
+  } else if (!class(weights) %in% c("data.frame" ,"list")) {
+    stop("`weights` must be a dataframe or a list with one element per label.")
+  }else{
+    weights_input <- weights
+    if (is.data.frame(weights_input)) {
+      weights <- .convert_weights_df_to_list(weights_input)
+      message("`weights` provided as a data.frame, converting to list format.")
+    } else {
+      message("`weights` provided as a list.")
+      weights <- weights_input
+  }
+  }
+  cl_df <- data.frame(cell = character(), label = integer(),
+                             stringsAsFactors = FALSE)
+  n_labels_w  <- length(weights)
+  n_labels_cl <- 0L
+  # --- auc ---
   if (is.null(auc)) {
     auc <- list()
-  } else if (is.data.frame(auc)) {
-    # bare data.frame → wrap into canonical structure
-    auc <- list(collected = auc)
-  } else if (all(class(auc) == "list" & !names(auc) %in% c("collected", "per_label") & identical(names(auc), names(weights)))){
-    auc <-  list(per_label = auc)
-  } else if (all(class(auc) == "list" & names(auc) == "per_label")){
-    message("AUC in list format")
-  } else if (all(class(auc) == "list" & names(auc) =="collected")){
-    message("AUC in collected format")
+    message("No `auc` provided; AUC-related visualizations will be unavailable.")
+  } else if (!class(auc) %in% c("data.frame" ,"list")) {
+    stop("`auc` must be a dataframe or a list with one element per label.")
   } else {
-    stop("`auc` must be a list or a data.frame (cells x TF collected format).")
+    # IF AUC is valid, THEN CELL LABELS MUST BE PROVIDED
+    # --- cell_labels ---
+    if (is.null(cell_labels)) {
+      message("`cell_labels` are required if auc is provided to construct a SimiCvizExperiment.")
+      stop("Please provide a valid `cell_labels` data.frame or file path.")
+    } else if (!class(cell_labels) %in% c("data.frame" ,"character")){
+      stop("`cell_labels` must be a data.frame or a file path.")
+    } else {
+      cl_df <- load_cell_labels(cell_labels)
+      n_labels_cl <- length(unique(cl_df$label))
+    } 
+
+    auc_input <- auc
+    if (is.data.frame(auc_input)) {
+    # Check that it is in long format (cell, tf, score) or wide format (cells x TFs)
+    if (all(c("cell", "tf", "score") %in% tolower(colnames(auc_input)))) {
+      message("AUC in long format (cell, tf, score), converting to wide format (collected).")
+      auc <- tidyr::pivot_wider(auc_input, names_from = tf, values_from = score)
+      # Set cell as rownames and remove from columns
+      auc <- as.data.frame(auc)
+      rownames(auc) <- auc$cell
+      auc$cell <- NULL
+      auc <- list(collected = auc)
+    } else{
+      message("AUC in wide format (cells x TFs).")
+      auc <- list(collected = auc_input)
+    }
+  # Check if auc has the cells in cell_labels
+  if (all(rownames(auc$collected) %in% (cl_df$cell))){
+    message("AUC cell IDs match those in cell_labels.")
+  } else if (any(rownames(auc$collected) %in% (cl_df$cell))){
+    warning("Some auc cell IDs do not match those in cell_labels. Auc results will be displayed for matching cells only.")
   }
-
-  # --- cell_labels ---
-  if (is.null(cell_labels)) {
-    cl_df <- data.frame(cell = character(), label = integer(),
-                        stringsAsFactors = FALSE)
-  } else {
-    cl_df <- load_cell_labels(cell_labels)
+  } else if (all(class(auc) == "list" & identical(names(auc), names(weights)))){
+    # Assume it's a per-label list of AUC data.frames (not yet collected) and not named as "per_label"
+    message("AUC in per-label list format, converting to wide format (collected).")
+    auc_df <- auc_list_to_df(auc_input, cell_labels = cl_df)
+    auc <-  list(collected = auc_df)
   }
-
-  tf_ids     <- if (is.null(tf_ids))     character() else as.character(tf_ids)
-  target_ids <- if (is.null(target_ids)) character() else as.character(target_ids)
-
+}
   # --- infer n_labels ---
-  n_labels_cl <- length(unique(cl_df$label))
-  n_labels_w  <- length(weights)
-  n_labels <- if (n_labels_cl > 0L) n_labels_cl else n_labels_w
-
-  if (n_labels_cl > 0L && n_labels_w > 0L && n_labels_cl != n_labels_w) {
+  n_labels <- if (n_labels_w > 0L) n_labels_w else n_labels_cl
+  if (n_labels_cl == 0L){
+    message("No `cell_labels` provided; using `weights` length as reference for number of labels.")
+  }else if (n_labels_cl > 0L && n_labels_w > 0L && n_labels_cl != n_labels_w) {
     warning(sprintf(
-      "Number of unique labels in `cell_labels` (%d) differs from `weights` length (%d). Using `cell_labels` as reference.",
+      "Number of unique labels in `cell_labels` (%d) differs from `weights` length (%d). Using `weights` as reference.",
       n_labels_cl, n_labels_w
     ))
   }
+  # If TFs or targets are not provided, infer from WEIGHT colnames and rownames (weight is mandatory, auc si not)
+  tf_ids     <-  unique(c(sapply(weights,rownames)))
+  target_ids <-  unique(c(sapply(weights,colnames)))  
 
   # --- label_names / colors ---
-  norm_lab <- .normalize_label_names(label_names, n_labels = n_labels)
-  norm_col <- .normalize_label_colors(colors,     n_labels = n_labels)
+  
+  norm_lab <- .normalize_label_names(label_names, n_labels = n_labels, keys = names(weights))
+  norm_col <- .normalize_label_colors(colors,     n_labels = n_labels,keys = names(weights))
 
   new(
     "SimiCvizExperiment",
@@ -341,17 +372,17 @@ is.SimiCvizExperiment <- function(x) {
   inherits(x, "SimiCvizExperiment")
 }
 
-# --- label utilities (mirrors Python behaviour) ---------------------------
+# --- label utilities ---------------------------
 
-.normalize_label_names <- function(x, n_labels = NULL) {
-  if (is.null(x) || length(x) == 0) {
-    if (!is.null(n_labels) && n_labels > 0L) {
+.normalize_label_names <- function(label_names, n_labels, keys) {
+  if (is.null(label_names) || length(label_names) == 0) {
+    if (n_labels > 0L) {
       message("No `label_names` provided; using default 'Label i' naming.")
+      label_names <- paste("Label", seq_len(n_labels) - 1L,sep = "_")
     }
-    return(character())
   }
 
-  labs <- as.character(x)
+  labs <- as.character(label_names)
 
   if (!is.null(n_labels) && n_labels > 0L && length(labs) != n_labels) {
     stop(sprintf(
@@ -360,45 +391,65 @@ is.SimiCvizExperiment <- function(x) {
     ))
   }
 
-  if (is.null(names(labs))) {
-    names(labs) <- as.character(seq_len(length(labs)) - 1L)
+  if (is.null(names(label_names))) {
+    names(labs) <- keys
+  } else{
+    names(labs) <- names(label_names)
   }
 
   lab_ids <- as.integer(names(labs))
   if (any(is.na(lab_ids))) {
     stop("`label_names` names must be coercible to integer labels (e.g. '0','1',...).")
   }
+  if (!all(lab_ids %in% keys)){
+    stop("`label_names` names must match the label identifiers used in `weights`.")
+  }
 
   stats::setNames(labs, as.character(lab_ids))
 }
 
-.normalize_label_colors <- function(x, n_labels = NULL) {
+.normalize_label_colors <- function(x, n_labels, keys) {
+
+  default_colors <- c("#5e82bd", "#ed9900", "#008b00","#cd9b9b","#800080","#ff676f")
+  
   if (is.null(x) || length(x) == 0) {
     if (!is.null(n_labels) && n_labels > 0L) {
       message("No `colors` provided; using internal default palette.")
+      x <- default_colors[seq_len(n_labels)]
     }
-    return(character())
   }
 
-  cols <- as.character(x)
-
-  if (!is.null(n_labels) && n_labels > 0L && length(cols) != n_labels) {
-    stop(sprintf(
-      "`colors` length (%d) must match the number of labels in experiment (%d).",
+  cols <- as.character(unique(x))
+  if (n_labels > 0L && length(cols) > n_labels) {
+    warning(sprintf(
+      "`colors` length (%d) does not match the number of labels in experiment (%d). Selecting first colors: (%s)",
+      length(cols), n_labels, paste(cols[1:n_labels], collapse=", ")
+    ))
+    cols <- cols[1:n_labels]
+  } else if (n_labels > 0L && length(cols) < n_labels){
+    warning(sprintf(
+      "`colors` length (%d) is less than the number of labels in experiment (%d). Adding default extra colors.",
       length(cols), n_labels
     ))
+    default_colors_allowed  <- setdiff(default_colors, cols)
+    cols  <- c(cols, default_colors_allowed[seq_len(n_labels - length(cols))])
   }
 
   if (is.null(names(cols))) {
-    names(cols) <- as.character(seq_len(length(cols)) - 1L)
+    names(cols) <- keys
+  } else{
+    names(cols) <- names(x)
   }
 
-  lab_ids <- as.integer(names(cols))
-  if (any(is.na(lab_ids))) {
+  col_ids <- as.integer(names(cols))
+  if (any(is.na(col_ids))) {
     stop("`colors` names must be coercible to integer labels (e.g. '0','1',...).")
   }
+  if (!all(col_ids %in% keys)){
+    stop("`color` names must match the label identifiers used in `weights`.")
+  }
 
-  stats::setNames(cols, as.character(lab_ids))
+  stats::setNames(cols, as.character(col_ids))
 }
 
 #' Set or update label names and colors
@@ -423,11 +474,11 @@ setLabelNames <- function(x,
   n_cl <- length(unique(x@cell_labels$label))
   n_w  <- length(x@weights)
   n_labels <- if (n_cl > 0L) n_cl else n_w
-
-  x@label_names <- .normalize_label_names(label_names, n_labels = n_labels)
+  keys <- names(x@weights)
+  x@label_names <- .normalize_label_names(label_names, n_labels = n_labels, keys = keys)
 
   if (!is.null(colors)) {
-    x@colors <- .normalize_label_colors(colors, n_labels = n_labels)
+    x@colors <- .normalize_label_colors(colors, n_labels = n_labels, keys = keys)
   } else if (length(x@colors) == 0L) {
     x@colors <- character()
   }
