@@ -275,6 +275,20 @@ auc_list_to_df <- function(auc_list, cell_labels_df) {
   return(auc_collected)
 }
 
+.convert_auc_long_to_wide <- function(auc_long_df) {
+  if (!all(c("cell", "tf", "score") %in% colnames(auc_long_df))) {
+    stop("Input data.frame must contain columns 'cell', 'tf', and 'score'.")
+  }
+  auc_wide <- auc_long_df %>%
+    tidyr::pivot_wider(
+      names_from = tf,
+      values_from = score,
+      values_fill = list(score = NA)
+    ) %>%
+    tibble::column_to_rownames("cell") %>%
+    as.data.frame()
+  return(auc_wide)
+}
 # ---- Main pipeline loader -----------------------------------------------
 
 #' Create a SimiCvizExperiment from SimiCPipeline output path
@@ -337,8 +351,18 @@ load_SimiCPipeline <- function(project_dir,
   if (length(weights_file) == 0L) {
     stop("No weights pickle file found for: ", base_name)
   }
+  # Initialize
+  weights <- NULL
+  auc <- NULL
+  cell_labels <- NULL
+  label_names <- NULL
+  colors <- NULL
 
+  # Load weights and metadata from pickle
+  message("Found weights file: ", weights_file)
   weights <- read_weights_pickle(weights_file)
+
+  # Add adjusted R-squared and TF/target info to metadata for reference
   out     <- read_pickle(weights_file)
   r2_file <- out$adjusted_r_squared
   TF_ids        <- out$TF_ids
@@ -350,7 +374,6 @@ load_SimiCPipeline <- function(project_dir,
   meta$lambda2  <- lambda2
 
   # ---- Load AUC (priority: collected CSV → pickle → NULL) ----
-  auc_collected <- NULL
 
   # Step 1: Try collected CSV
 
@@ -358,56 +381,50 @@ load_SimiCPipeline <- function(project_dir,
 
   if (length(auc_csv_file) == 1L) {
     message("Found collected AUC CSV file: ", auc_csv_file)
-    auc_collected <- load_collected_auc(auc_csv_file)
+    auc <- auc_collected <- load_collected_auc(auc_csv_file)
+
   } else if (length(auc_csv_file) > 1L) {
     print("Multiple AUC CSV files found:")
     print(auc_csv_file)
     stop("Multiple AUC CSV files found. Please make sure only one collected.csv file by run_name and lambda parameters is found.")
+  
   } else {
+
     # Step 2: Try per-label pickle
     message("No collected AUC CSV file found. Attempting to load per-label pickle.")
     auc_pickle_file <- output_files[grepl(".*wAUC.*\\.pickle$", output_files)]
 
     if (length(auc_pickle_file) == 0L) {
       message("No AUC pickle file found. AUC will be set to NULL.")
+    
     } else if (length(auc_pickle_file) > 1L) {
       print("Multiple AUC pickle files found:")
       print(auc_pickle_file)
       stop("Multiple AUC pickle files found. Please make sure only one pickle file by run_name and lambda parameters is found.")
     } else {
       message("Found AUC pickle file: ", auc_pickle_file)
-      auc_list_raw <- read_auc_pickle(auc_pickle_file)
+      auc <- read_auc_pickle(auc_pickle_file)
+    }
+    }
 
-      # Step 3: Subset and collect only if cell labels are available
-      if (!is.null(cell_labels_df)) {
-        # auc_list_subset <- subset_auc_by_labels(auc_list_raw, cell_labels_df)
+    if (!is.null(auc)) {
+        # ---- Load cell labels ----
+      message("Looking for cell labels in input files...")
+      cell_labels_file <- input_files[grepl("annotation.csv$", input_files)]
 
-        # Step 4: Collect into single cells × TF data.frame
-        # auc_collected <- collect_auc(auc_list_subset, cell_labels = cell_labels_df)
-        auc_collected  <- auc_list_to_df(auc_list_raw, cell_labels_df)
-        # Step 5: Save collected CSV for future fast loading
-        collected_csv_path <- file.path(
-          matrix_dir,
-          paste0(base_name, "wAUC_matrics_filtered_BIC_collected.csv")
-        )
-        tryCatch({
-          save_collected_auc(auc_collected, collected_csv_path, overwrite = FALSE)
-          message("Saved collected AUC CSV: ", collected_csv_path)
-        }, error = function(e) {
-          message("Could not save collected AUC CSV: ", conditionMessage(e))
-        })
+      if (length(cell_labels_file) == 0L) {
+        message("No cell labels file found. Cell labels will be set to NULL.")
+      } else if (length(cell_labels_file) > 1L) {
+        print("Multiple cell labels files found:")
+        print(cell_labels_file)
+        stop("Multiple cell labels files found. Please ensure only one .txt file is present in the inputFiles directory.")
       } else {
-        warning(
-          "Cell labels are not available. Cannot produce a collected AUC ",
-          "data.frame with unique cell identifiers. AUC will be stored as a ",
-          "raw per-label list. Provide cell labels via `setCellLabels()` and ",
-          # "then use subset_auc_by_labels`()`and `collect_auc()` to generate the collected format."
-            "then use `auc_list_to_df()` to generate the collected format."
-        )
-        auc_collected <- NULL
+        message("Found cell labels file: ", cell_labels_file)
+        # Assume it's a CSV with columns 'cell' and 'label' (SimiCPipeline)
+        cell_labels <- load_cell_labels(cell_labels_file, header = TRUE, sep = ",")
       }
     }
-  }
+  
   
   # ---- Validate TFs match between weights and AUC ----
   if (!is.null(auc_collected)) {
@@ -419,39 +436,11 @@ load_SimiCPipeline <- function(project_dir,
               paste(TF_ids, collapse = ", "), ").")
     }
   }
-  
-  # ---- Load cell labels ----
-  cell_labels_file <- input_files[grepl("annotation.csv$", input_files)]
-  message("Looking for cell labels in input files...")
-  
-  cell_labels <- NULL
-  cell_labels_df <- NULL
-  if (length(cell_labels_file) == 0L) {
-    message("No cell labels file found. Cell labels will be set to NULL.")
-  } else if (length(cell_labels_file) > 1L) {
-    print("Multiple cell labels files found:")
-    print(cell_labels_file)
-    stop("Multiple cell labels files found. Please ensure only one .txt file is present in the inputFiles directory.")
-  } else {
-    message("Found cell labels file: ", cell_labels_file)
-    cell_labels_df <- load_cell_labels(cell_labels_file)
-  }
-  # Likely cell_labels_file was a vector and automatic cell names were generated cell_1, cell_2
-  # if (cell_labels_df$cell[1]=="cell_1")
-  # ---- Construct experiment ----
-  # auc slot: collected df when available, otherwise raw per-label list from pickle
-  if (!is.null(auc_collected)) {
-    auc_slot <- list(collected = auc_collected)
-  } else if (exists("auc_list_raw", inherits = FALSE) && !is.null(auc_list_raw)) {
-    auc_slot <- list(per_label = lapply(auc_list_raw, as.data.frame))
-  } else {
-    auc_slot <- list()
-  }
 
   simic <- SimiCvizExperiment(
     weights     = weights,
-    auc         = auc_slot,
-    cell_labels = cell_labels_df,
+    auc         = auc,
+    cell_labels = cell_labels,
     meta        = meta
   )
 
@@ -465,32 +454,37 @@ load_SimiCPipeline <- function(project_dir,
 #' @param weights_file CSV with weights (long format: tf, target, weight,
 #'   and optionally label).
 #' @param auc_file optional CSV with AUC metrics (collected cells × TF format).
+#' @param cell_labels_file optional CSV with cell labels (required columns: cell, label).
 #' @param meta optional named list with metadata.
 #'
 #' @return \code{\link{SimiCvizExperiment}} object.
 #' @export
 load_from_csv <- function(weights_file,
                           auc_file = NULL,
-                          cell_labels = NULL,
+                          cell_labels_file = NULL,
                           meta = list()) {
+
   weight_df <- read_weights_csv(weights_file)
   weights   <- .convert_weights_df_to_list(weight_df)
 
   auc <- if (!is.null(auc_file)) {
-    if (is.null(cell_labels)) {
+    if (any(is.null(cell_labels_file), !file.exists(cell_labels_file))) {
       message("`cell_labels` are required if auc is provided to construct a SimiCvizExperiment.")
       stop("Please provide a valid `cell_labels` data.frame or file path.")
     }
-    list(collected = read.csv(auc_file))
+    auc_df_long <- read_auc_csv(auc_file)
+    .convert_auc_long_to_wide(auc_df_long)
   } else {
     auc  <- NULL
   }
-
-
+  if (!is.null(auc)) {
+    cell_labels <- load_cell_labels(cell_labels_file, header = TRUE, sep = ",")
+  }
+ 
   SimiCvizExperiment(
     weights    = weights,
     auc        = auc,
-    cell_labels = NULL,
+    cell_labels = cell_labels,
     meta       = meta
   )
 }

@@ -166,11 +166,11 @@ setMethod("show", "SimiCvizExperiment", function(object) {
 #' @return A \code{data.frame} with columns \code{cell} (character) and
 #'   \code{label} (integer), sorted by \code{cell}.
 #' @export
-load_cell_labels <- function(x) {
+load_cell_labels <- function(x, ...) {
   if (is.data.frame(x)) {
     df <- .parse_cell_labels_df(x)
   } else if (is.character(x) && length(x) == 1L && file.exists(x)) {
-    df <- .parse_cell_labels_file(x)
+    df <- .parse_cell_labels_file(x, ...)
   } else if (is.vector(x) && !is.list(x)) {
     df <- .parse_cell_labels_vector(x)
   } else {
@@ -196,27 +196,19 @@ load_cell_labels <- function(x) {
     df <- df[, idx_cols, drop = FALSE]
     colnames(df) <- c("cell", "label")
     return(df)
-  }
-  if (ncol(df) == 1L) {
-    # single column → labels only; use rownames or generate IDs
-    ids <- if (!is.null(rownames(df)) &&
-               !all(rownames(df) == as.character(seq_len(nrow(df))))) {
-      rownames(df)
-    } else {
-      paste0("cell_", seq_len(nrow(df)))
-    }
-    return(data.frame(cell = ids, label = df[[1]], stringsAsFactors = FALSE))
+  } else if (ncol(df) == 1L){
+    stop("Check cell labels input format!")
   }
 }
 
-.parse_cell_labels_file <- function(path) {
+.parse_cell_labels_file <- function(path, ...) {
   if(!file.exists(path)){
     stop(sprintf("File not found: %s", path))
   }
   # try comma first, then tab
   df <- tryCatch(
-    utils::read.csv(path, stringsAsFactors = FALSE),
-    error = function(e) utils::read.delim(path, stringsAsFactors = FALSE)
+    utils::read.table(path, stringsAsFactors = FALSE, ...),
+    error = function(e) utils::read.table(path, stringsAsFactors = FALSE, ...)
   )
   .parse_cell_labels_df(df)
 }
@@ -240,15 +232,13 @@ load_cell_labels <- function(x) {
 #' Construct a SimiCvizExperiment object
 #'
 #' @param weights list with weight matrices and adjusted R2.
-#' @param auc list containing AUC data. The preferred format is
+#' @param auc optional list containing AUC data. The preferred format is
 #'   \code{list(collected = df)} where \code{df} is a cells × TF data.frame.
 #'   A plain data.frame is automatically wrapped into this structure.
 #'   This canonical format is compatible with any GRN method that produces
 #'   per-cell TF activity scores.
-#' @param cell_labels Cell-to-label mapping. Accepts any format supported by
-#'   \code{\link{load_cell_labels}}: a file path, a vector, a named vector,
-#'   or a data.frame.
-#'   \strong{If a plain vector is provided} (no names), it must be in the same
+#' @param cell_labels optional data.frame or vector with cell-to-label mapping. 
+#'   \strong{If a plain vector is provided} (no cell ids), it must be in the same
 #'   row order as the AUC matrix.
 #' @param tf_ids character vector of TF identifiers.
 #' @param target_ids character vector of target gene identifiers.
@@ -284,6 +274,7 @@ SimiCvizExperiment <- function(weights = NULL,
       weights <- weights_input
   }
   }
+
   cl_df <- data.frame(cell = character(), label = integer(),
                              stringsAsFactors = FALSE)
   n_labels_w  <- length(weights)
@@ -295,46 +286,80 @@ SimiCvizExperiment <- function(weights = NULL,
   } else if (!class(auc) %in% c("data.frame" ,"list")) {
     stop("`auc` must be a dataframe or a list with one element per label.")
   } else {
-    # IF AUC is valid, THEN CELL LABELS MUST BE PROVIDED
+    # IF AUC is valid class, THEN CELL LABELS MUST BE PROVIDED
+    flag <- FALSE
+
     # --- cell_labels ---
     if (is.null(cell_labels)) {
       message("`cell_labels` are required if auc is provided to construct a SimiCvizExperiment.")
-      stop("Please provide a valid `cell_labels` data.frame or file path.")
-    } else if (!class(cell_labels) %in% c("data.frame" ,"character")){
-      stop("`cell_labels` must be a data.frame or a file path.")
-    } else {
+      stop("Please provide a valid `cell_labels` data.frame or label vector.")
+    } else if (any(is.vector(cell_labels), is.data.frame(cell_labels))){
+
       cl_df <- load_cell_labels(cell_labels)
       n_labels_cl <- length(unique(cl_df$label))
-    } 
+
+      if (is.vector(cell_labels) && identical(cl_df$cell, paste0("cell_", seq_along(cell_labels)))){
+        # Mark flag TRUE if cell_labels was a vector, then cell is cell_1, cell_2, to change afterwards with rownames in auc
+        flag <- is.vector(cell_labels) 
+        }
+        
+    } else{
+      stop("`cell_labels` must be a data.frame or a vector.")
+    }
 
     auc_input <- auc
     if (is.data.frame(auc_input)) {
-    # Check that it is in long format (cell, tf, score) or wide format (cells x TFs)
-    if (all(c("cell", "tf", "score") %in% tolower(colnames(auc_input)))) {
-      message("AUC in long format (cell, tf, score), converting to wide format (collected).")
-      auc <- tidyr::pivot_wider(auc_input, names_from = tf, values_from = score)
-      # Set cell as rownames and remove from columns
-      auc <- as.data.frame(auc)
-      rownames(auc) <- auc$cell
-      auc$cell <- NULL
-      auc <- list(collected = auc)
+    # Check if it is in long format (cell, tf, score) or wide format (cells x TFs)
+      if (all(c("cell", "tf", "score") %in% tolower(colnames(auc_input)))) {
+        message("AUC in long format (cell, tf, score), converting to wide format (collected).")
+        auc_tmp <-.convert_auc_long_to_wide(auc_input)
+        if (flag){
+          warning("`cell_labels` were provided as a vector without cell IDs!")
+          stop("Cannot map cell ID's if auc is in wide format")
+        }
+      } else{
+        message("AUC in wide format (cells x TFs).") 
+        auc_tmp <- auc_input
+      }
+      if (flag){
+        message("`cell_labels` were provided as a vector without cell IDs; assuming order matches AUC rows.")
+        cl_df$cell <- rownames(auc_tmp) # assign cell IDs from AUC rownames
+      }
+    } else if (all(class(auc_input) == "list" & identical(names(auc), names(weights)))) {
+      # Assume it's a per-label list of AUC data.frames (not yet in wide format / collected)
+      message("AUC in per-label list format, converting to wide format using cell_labels (collected).")
+      if (flag){
+        message("`cell_labels` were provided as a vector without cell IDs; assuming order matches AUC rows.")
+        cl_df$cell <- rownames(auc_input[[1]]) # assign cell IDs from AUC rownames
+      }
+      # Check if auc has the cells in cell_labels
+      if (!any(rownames(auc_input[[1]]) %in% (cl_df$cell))){
+          warning("No `auc` cell IDs match those in cell_labels. Distribution curves will not be displayed.")
+          auc_tmp <- NULL
+      } else {
+        if(all(rownames(auc_input[[1]]) %in% (cl_df$cell))){
+          message("AUC cell IDs match those in cell_labels.")
+        } else if (any(rownames(auc_input[[1]]) %in% (cl_df$cell))){
+          warning("Some auc cell IDs do not match those in cell_labels. Auc results will be displayed for matching cells only.")
+        }
+        # Convert to wide format using cell_labels to subset cells.
+        auc_tmp <- auc_list_to_df(auc_input, cell_labels = cl_df)
+      }
     } else{
-      message("AUC in wide format (cells x TFs).")
-      auc <- list(collected = auc_input)
+      auc_tmp <- NULL
     }
-  # Check if auc has the cells in cell_labels
-  if (all(rownames(auc$collected) %in% (cl_df$cell))){
-    message("AUC cell IDs match those in cell_labels.")
-  } else if (any(rownames(auc$collected) %in% (cl_df$cell))){
-    warning("Some auc cell IDs do not match those in cell_labels. Auc results will be displayed for matching cells only.")
+
+   if (is.null(auc_tmp)) {
+      message("AUC data could not be processed; AUC-related visualizations will be unavailable.")
+      auc <- NULL
+    }else{
+      auc <- list(collected = auc_tmp)
+    }
+
+  if (!is.null(auc) && !any(rownames(auc$collected) %in% cl_df$cell)){
+    stop("AUC cell rownames don't match those in cell_labels.")
   }
-  } else if (all(class(auc) == "list" & identical(names(auc), names(weights)))){
-    # Assume it's a per-label list of AUC data.frames (not yet collected) and not named as "per_label"
-    message("AUC in per-label list format, converting to wide format (collected).")
-    auc_df <- auc_list_to_df(auc_input, cell_labels = cl_df)
-    auc <-  list(collected = auc_df)
   }
-}
   # --- infer n_labels ---
   n_labels <- if (n_labels_w > 0L) n_labels_w else n_labels_cl
   if (n_labels_cl == 0L){
@@ -352,7 +377,7 @@ SimiCvizExperiment <- function(weights = NULL,
   # --- label_names / colors ---
   
   norm_lab <- .normalize_label_names(label_names, n_labels = n_labels, keys = names(weights))
-  norm_col <- .normalize_label_colors(colors,     n_labels = n_labels,keys = names(weights))
+  norm_col <- .normalize_label_colors(colors,     n_labels = n_labels, keys = names(weights))
 
   new(
     "SimiCvizExperiment",
