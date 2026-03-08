@@ -128,6 +128,7 @@ simic2
 ```
 
 ```{r eval = FALSE}
+# Equivalent (not run)
 simic2_bis <- SimiCvizExperiment(weights = weights_results,
                              auc = auc_pkl,
                              cell_labels = cell_labels_old,
@@ -142,7 +143,7 @@ Alternatively you can load the results from other methods in .csv format.
 We provide specific functions to read .csv files and convert to the expected format for `SimiCvizExperiment` object.
 
 
-```{r  collapse=TRUE}
+```{r  collapse=TRUE,results='hold' }
 weight_path <-  system.file("extdata","example_weights.csv", package = "SimiCviz")
 auc_path <-  system.file("extdata","example_auc.csv", package = "SimiCviz")
 cell_labels_path <- system.file("extdata", 
@@ -161,6 +162,7 @@ simic3
 
 SimiCviz expects for the weights a csv with at least columns `c("tf","target","weight")` and for the activity scores a csv with columns `c("cell", "tf","score")`
 ```{r eval = FALSE}
+# Equivalent (not run)
 weight_df <- read_weights_csv(weight_path)
 head(weight_df)
 auc_df <- read_auc_csv(auc_path)
@@ -209,10 +211,16 @@ plot_r2_distribution(adjusted_r_squared, simic, grid=c(2,2))
 Here we can see that the distribution of adjusted R2 values across all targets. Most of them are over 0.7, indicating that the model explains a significant portion of the variance in the target gene expression.
 However, there are also some targets with low or negative adjusted R2 values, suggesting that the model does not fit well for those targets. This could be due to various reasons such as noise in the data, missing regulatory interactions, or complex regulatory mechanisms that are not captured by the model.
 For these targets with low adjusted R2, we suggest to filter them out before plotting.
+We select a threshold of `0.7` as it was the same used to calculate the activity scores during the SimiC pipeline. 
+You can change this threshold as needed, but you shoudl re-run the SimiCPipeline auc calculation with the same threshold to be consistent.
 ```{r}
 unselected_targets <- list()
+selected_targets <- list()
 lab_keys <- names(simic@label_names)
 for (lab in lab_keys){
+    # Save selected for plotting
+    selected_targets[[lab]] <- simic@target_ids[which(adjusted_r_squared[[lab]] >= 0.7)]
+    # Save unselected for reporting
     label <- simic@label_names[[lab]]
     unselected_targets[[label]] <- simic@target_ids[which(adjusted_r_squared[[lab]] < 0.7)]
 }
@@ -222,44 +230,51 @@ print(sapply(unselected_targets, length))
 ## TF Weight barplots
 We will plot the top 30 targets for the top 4 TFs. You can change the number of TFs and targets to plot by changing the `tf_names` and `top_n` arguments.
 ```{r}
-plot_tf_weights(simic, 
-                tf_names = simic@tf_ids[1:4],
-                top_n    = 30, 
-                save = TRUE, 
-                grid     = c(4, 1),
+ plot_tf_weights(simic,
+                tf_names        = simic@tf_ids[1:4],
+                top_n           = 25,
+                allowed_targets = selected_targets,
+                grid            = c(4,1),
+                save            = TRUE,
                 out_dir = plot_dir, 
-                filename = "TF_weights_barplot.pdf")
+                filename = "TF_weights_barplot.pdf"
+                ) 
+
 ```
 
 ```{r, fig.height=8, fig.width=10, echo = FALSE, message = FALSE}
-plot_tf_weights(simic, 
-                tf_names = simic@tf_ids[1:4],
-                top_n    = 30, 
-                save = FALSE, 
-                grid     = c(4, 1))
+ plot_tf_weights(simic,
+                tf_names        = simic@tf_ids[1:2],
+                top_n           = 25,
+                allowed_targets = selected_targets,
+                grid            = c(2,1),
+                save            = FALSE
+                ) 
+
 ```
 
 ## Target Weight barplots
 
-```{r, eval = TRUE}
+```{r,}
 plot_target_weights(simic, 
                 target_names = simic@target_ids[1:4],
                 labels   = c("control","DAC"),
                 save = TRUE, 
                 width= 18, # Adjust width and height as needed for grid layout
                 height = 10, 
-                grid     = c(2, 2),
+                grid     = c(1, 2),
                 out_dir = plot_dir, 
                 filename = "Target_weights_barplot.pdf")
+
 ```
 
 ```{r,fig.height=10, fig.width=15, echo = FALSE, message = FALSE}
 plot_target_weights(simic, 
-                target_names = simic@target_ids[1:4],
-                labels   = c("control","DAC"),
-                save = FALSE, 
-                width= 18, height = 10,
-                grid     = c(2, 2))
+                    target_names = simic@target_ids[1:4],
+                    labels   = c("control","DAC"),
+                    save = FALSE, 
+                    width= 18, height = 10,
+                    grid     = c(2, 2))
 ```
 
 

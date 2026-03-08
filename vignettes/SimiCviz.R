@@ -72,6 +72,7 @@ simic2 <- SimiCvizExperiment(weights = weights_results,
 simic2
 
 ## ----eval = FALSE-----------------------------------------
+#  # Equivalent (not run)
 #  simic2_bis <- SimiCvizExperiment(weights = weights_results,
 #                               auc = auc_pkl,
 #                               cell_labels = cell_labels_old,
@@ -79,7 +80,7 @@ simic2
 #                               colors = c("#e0e0e0", "#a8c8ff", "#ffb6b6", "#c1a9e0"))
 #  simic2_bis
 
-## ----collapse=TRUE----------------------------------------
+## ----collapse=TRUE,results='hold'-------------------------
 weight_path <-  system.file("extdata","example_weights.csv", package = "SimiCviz")
 auc_path <-  system.file("extdata","example_auc.csv", package = "SimiCviz")
 cell_labels_path <- system.file("extdata", 
@@ -96,6 +97,7 @@ simic3 <- setLabelNames(simic3, label_names  = c("control","PD-L1","DAC","Combo"
 simic3
 
 ## ----eval = FALSE-----------------------------------------
+#  # Equivalent (not run)
 #  weight_df <- read_weights_csv(weight_path)
 #  head(weight_df)
 #  auc_df <- read_auc_csv(auc_path)
@@ -130,8 +132,12 @@ plot_r2_distribution(adjusted_r_squared, simic, grid=c(2,2))
 
 ## ---------------------------------------------------------
 unselected_targets <- list()
+selected_targets <- list()
 lab_keys <- names(simic@label_names)
 for (lab in lab_keys){
+    # Save selected for plotting
+    selected_targets[[lab]] <- simic@target_ids[which(adjusted_r_squared[[lab]] >= 0.7)]
+    # Save unselected for reporting
     label <- simic@label_names[[lab]]
     unselected_targets[[label]] <- simic@target_ids[which(adjusted_r_squared[[lab]] < 0.7)]
 }
@@ -139,39 +145,46 @@ print("Number of unselected targets per label:")
 print(sapply(unselected_targets, length)) 
 
 ## ---------------------------------------------------------
-plot_tf_weights(simic, 
-                tf_names = simic@tf_ids[1:4],
-                top_n    = 30, 
-                save = TRUE, 
-                grid     = c(4, 1),
+ plot_tf_weights(simic,
+                tf_names        = simic@tf_ids[1:4],
+                top_n           = 25,
+                allowed_targets = selected_targets,
+                grid            = c(4,1),
+                save            = TRUE,
                 out_dir = plot_dir, 
-                filename = "TF_weights_barplot.pdf")
+                filename = "TF_weights_barplot.pdf"
+                ) 
+
 
 ## ----fig.height=8, fig.width=10, echo = FALSE, message = FALSE----
-plot_tf_weights(simic, 
-                tf_names = simic@tf_ids[1:4],
-                top_n    = 30, 
-                save = FALSE, 
-                grid     = c(4, 1))
+ plot_tf_weights(simic,
+                tf_names        = simic@tf_ids[1:2],
+                top_n           = 25,
+                allowed_targets = selected_targets,
+                grid            = c(2,1),
+                save            = FALSE
+                ) 
 
-## ----eval = TRUE------------------------------------------
+
+## ---------------------------------------------------------
 plot_target_weights(simic, 
                 target_names = simic@target_ids[1:4],
                 labels   = c("control","DAC"),
                 save = TRUE, 
                 width= 18, # Adjust width and height as needed for grid layout
                 height = 10, 
-                grid     = c(2, 2),
+                grid     = c(1, 2),
                 out_dir = plot_dir, 
                 filename = "Target_weights_barplot.pdf")
 
+
 ## ----fig.height=10, fig.width=15, echo = FALSE, message = FALSE----
 plot_target_weights(simic, 
-                target_names = simic@target_ids[1:4],
-                labels   = c("control","DAC"),
-                save = FALSE, 
-                width= 18, height = 10,
-                grid     = c(2, 2))
+                    target_names = simic@target_ids[1:4],
+                    labels   = c("control","DAC"),
+                    save = FALSE, 
+                    width= 18, height = 10,
+                    grid     = c(2, 2))
 
 ## ----eval = FALSE-----------------------------------------
 #  plot_tf_weights(simic,
