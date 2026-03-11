@@ -147,7 +147,7 @@ plot_auc_distributions <- function(x, tf_names = NULL, labels = NULL,
   n_tfs         <- length(tf_names)
   col_map       <- x@colors
   col_map_named <- stats::setNames(unname(col_map), lab_names[names(col_map)])
-  diss_score    <- calculate_dissimilarity(x, tf_names = tf_names, labels = labels, verbose = FALSE)
+  diss_score    <- calculate_dissimilarity(x, labels = labels, verbose = FALSE)
 
   if (is.null(grid)) {
     grid_cols      <- 2L
@@ -181,7 +181,7 @@ plot_auc_distributions <- function(x, tf_names = NULL, labels = NULL,
     } else {
       p <- p + ggplot2::geom_density(alpha = 0, adjust = bw_adjust, linewidth = 1)
     }
-    if (rug) p <- p + ggplot2::geom_rug(alpha = 0.4, colour = "grey40")
+    if (rug) p <- p + ggplot2::geom_rug(alpha = 0.4)
 
     p <- p +
       ggplot2::scale_fill_manual(values = col_map_named, labels = new_labels) +
@@ -307,7 +307,7 @@ plot_auc_cumulative <- function(x, tf_names = NULL, labels = NULL, alpha = 0.8,
                      legend.direction = "vertical",
                      plot.title = ggplot2::element_text(face = "bold", size = 12))
 
-    if (rug) p <- p + ggplot2::geom_rug(alpha = 0.4, colour = "grey40", sides = "b")
+    if (rug) p <- p + ggplot2::geom_rug(alpha = 0.4, sides = "b")
 
     subtitle_parts <- NULL
     if (!is.null(ecdf_df) && tf %in% rownames(ecdf_df)) {
