@@ -17,6 +17,7 @@
     hist_mat <- list()
 
     for (lab in labels) {
+
       df <- auc_list[[as.character(lab)]]
       if (is.null(df) || !(tf %in% colnames(df))) next
       vals <- df[[tf]]
@@ -53,55 +54,6 @@
 
   scores
 }
-
-
-#' Resolve label arguments to integer label keys
-#'
-#' Accepts integer keys, character label names, or a mix, and returns
-#' the corresponding integer label keys from the experiment object.
-#'
-#' @param x A \code{SimiCvizExperiment} object.
-#' @param labels Vector of integer keys or character label names, or NULL (all).
-#' @return Integer vector of resolved label keys.
-#' @keywords internal
-#' @noRd
-.resolve_labels_dissim <- function(x, labels) {
-  cl <- x@cell_labels
-  all_labels <- sort(unique(cl$label))
-
-  if (is.null(labels)) return(all_labels)
-
-  # Map label_names back to integer keys
-  name_to_key <- stats::setNames(
-    as.integer(names(x@label_names)),
-    x@label_names
-  )
-
-  resolved <- vapply(labels, function(lab) {
-    # Already an integer key
-    if (is.numeric(lab) || is.integer(lab)) {
-      return(as.integer(lab))
-    }
-    # Try matching as a label name
-    if (is.character(lab) && lab %in% names(name_to_key)) {
-      return(name_to_key[[lab]])
-    }
-    # Try coercing string to integer (e.g. "0", "1")
-    as_int <- suppressWarnings(as.integer(lab))
-    if (!is.na(as_int) && as_int %in% all_labels) {
-      return(as_int)
-    }
-    stop(sprintf(
-      "Label '%s' not found. Valid keys: [%s]. Valid names: [%s].",
-      lab,
-      paste(all_labels, collapse = ", "),
-      paste(x@label_names, collapse = ", ")
-    ))
-  }, integer(1), USE.NAMES = FALSE)
-
-  unique(resolved)
-}
-
 
 #' Calculate dissimilarity scores across phenotype labels
 #'
@@ -140,7 +92,7 @@ calculate_dissimilarity <- function(x,
   }
 
   # Resolve labels (accepts integers, label names, or mix)
-  labels <- .resolve_labels_dissim(x, labels)
+  labels <- .resolve_labels(x, labels)
   if (length(labels) < 2L) {
     stop("Need at least 2 labels to compute dissimilarity.")
   }
@@ -149,7 +101,7 @@ calculate_dissimilarity <- function(x,
   tf_cols <- setdiff(colnames(auc_df), "label")
 
   # Build per-label AUC list (subsetting cells)
-  .build_auc_list <- function(cell_subset = NULL) {
+  .build_auc_list <- function(auc_df, cell_subset = NULL) {
     out <- list()
     for (lab in labels) {
       cells_in_lab <- cl$cell[cl$label == lab]
@@ -166,7 +118,7 @@ calculate_dissimilarity <- function(x,
   # --- No cell groups: global dissimilarity ---
   if (is.null(cell_groups)) {
     if (verbose) message("Calculating dissimilarity scores (all cells)...")
-    auc_list <- .build_auc_list()
+    auc_list <- .build_auc_list(auc_df=auc_df)
     scores <- .compute_dissimilarity_scores(auc_list, tf_cols,
                                             as.character(labels), n_breaks)
     result <- data.frame(MinMax_score = scores, row.names = tf_cols,
@@ -182,15 +134,24 @@ calculate_dissimilarity <- function(x,
 
   # --- Per-group dissimilarity ---
   if (verbose) {
-    message(sprintf("Calculating dissimilarity for %d cell groups...",
-                    length(cell_groups)))
+    message(sprintf("Calculating dissimilarity for selected cell groups..."))
   }
-
+  if (is.character(cell_groups) && cell_groups %in% colnames(cl)) {
+    # Generate groups from cell_lables data.frame column
+    cell_groups_list  <- lapply(unique(cl[[cell_groups]]), function(celltype) {
+                    cl$cell[cl[[cell_groups]] == celltype]
+      })
+      names(cell_groups_list) <- unique(cl[[cell_groups]])
+  } else if (is.list(cell_groups)) {
+    cell_groups_list <- cell_groups
+  } else {
+    stop("cell_groups must be either a column name in cell_labels or a named list of cell ID vectors.")
+  }
   group_scores <- list()
-  for (gname in names(cell_groups)) {
-    cell_ids <- cell_groups[[gname]]
-    if (verbose) message(sprintf("  Group: %s (%d cells)", gname, length(cell_ids)))
-    auc_list <- .build_auc_list(cell_subset = cell_ids)
+  for (gname in names(cell_groups_list)) {
+    cell_ids <- cell_groups_list[[gname]]
+    auc_list <- .build_auc_list(auc_df = auc_df, cell_subset = cell_ids)
+    if (verbose) message(sprintf("  Group: %s (%d cells)", gname, sum(sapply(auc_list, nrow))))
     if (length(auc_list) < 2L) {
       if (verbose) message(sprintf("    Warning: <2 labels with cells for '%s', skipping.", gname))
       group_scores[[gname]] <- rep(0, length(tf_cols))
