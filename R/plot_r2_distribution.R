@@ -1,6 +1,6 @@
-#' Plot adjusted R² distributions
+#' Plot adjusted R2 distributions
 #'
-#' Plots histograms of adjusted R² values per label, similar to the Python
+#' Plots histograms of adjusted R2 values per label, similar to the Python
 #' \code{SimiCVisualization$plot_r2_distribution}.
 #'
 #' @param adjusted_r_squared A \strong{named list} of numeric vectors, one per
@@ -15,7 +15,7 @@
 #'   used.
 #' @param labels Optional vector of labels to plot (subset of
 #'   \code{names(adjusted_r_squared)}). Defaults to all.
-#' @param threshold Numeric R² threshold line and summary-statistic cutoff
+#' @param threshold Numeric R2 threshold line and summary-statistic cutoff
 #'   (default \code{0.7}).
 #' @param nrow,ncol Optional grid layout. If both \code{NULL}, one label per
 #'   row.
@@ -153,7 +153,7 @@ plot_r2_distribution <- function(adjusted_r_squared,
     grDevices::pdf(fpath, width = width, height = height, onefile = TRUE)
     .draw_all()
     grDevices::dev.off()
-    message("Saved R² distributions to: ", fpath)
+    message("Saved R2 distributions to: ", fpath)
   } else {
     .draw_all()
   }
@@ -171,7 +171,7 @@ r2_histogram <- function(adjusted_r_squared,
     adjusted_r_squared,
     col      = col,
     breaks   = n_tfs,
-    xlab     = "Adjusted R²",
+    xlab     = "Adjusted R2",
     main     = main,
     border   = "black"
   )

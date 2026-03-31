@@ -104,16 +104,16 @@
   df_plot$gene       <- factor(df_plot$gene,       levels = gene_order)
   df_plot$label_name <- factor(df_plot$label_name, levels = all_label_names)
 
-    # In target mode we do not want the weights that are 0 for all phenotypes, so we filter them out
-  if (gene_type == "target") {
+  # Remove the weights that are 0 for all phenotypes
+ 
     gene_zero <- tapply(df_plot$weight, df_plot$gene, function(w) all(w == 0))
     genes_to_keep <- names(gene_zero)[!gene_zero]
     df_plot <- df_plot[df_plot$gene %in% genes_to_keep, , drop = FALSE]
-    }
+  
   p <- ggplot2::ggplot(df_plot, ggplot2::aes(x = .data$gene,
                                               y = .data$weight,
                                               fill = .data$label_name)) +
-    ggplot2::geom_col(position = ggplot2::position_dodge(width = 0.8),
+    ggplot2::geom_col(position = ggplot2::position_dodge(width = 0.8,preserve = "single"),
                       colour = "black", linewidth = 0.3, width = 0.8) +
     ggplot2::scale_fill_manual(values = col_map, drop = FALSE) +
     ggplot2::geom_hline(yintercept = 0, colour = "black", linewidth = 0.5) +
@@ -254,7 +254,7 @@
     .draw_pages(pages)
   }
 
-  invisible(pages)
+  invisible(plot_list)
 }
 
 # ---- Public: plot_tf_weights --------------------------------------------

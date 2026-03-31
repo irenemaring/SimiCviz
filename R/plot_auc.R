@@ -73,6 +73,12 @@
 
 # ---- Public: calculate_ecdf_auc -----------------------------------------
 
+#' Calculate ECDF AUC
+#'
+#' Calculates the area under the empirical cumulative distribution function.
+#'
+#' @param ... Arguments passed to the function.
+#' @return A numeric value representing the ECDF AUC.
 #' @export
 calculate_ecdf_auc <- function(x, tf_names = NULL, labels = NULL,
                                integration_range = c(0, 1), percentile = 0.5) {
@@ -208,7 +214,7 @@ plot_auc_distributions <- function(x, tf_names = NULL, labels = NULL,
   } else {
     .draw_pages(pages)
   }
-  invisible(pages)
+  invisible(plot_list)
 }
 
 # ---- Internal: ECDF table grob ------------------------------------------
@@ -346,7 +352,7 @@ plot_auc_cumulative <- function(x, tf_names = NULL, labels = NULL, alpha = 0.8,
   } else {
     .draw_pages(pages)
   }
-  invisible(pages)
+  invisible(plot_list)
 }
 
 # ---- Public: plot_auc_summary_statistics ---------------------------------
@@ -436,10 +442,16 @@ plot_auc_summary_statistics <- function(x, labels = NULL, high_threshold = 0.5,
     ggplot2::theme(legend.position = "none",
                    axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
                    plot.title  = ggplot2::element_text(face = "bold"))
-
-  combined <- gridExtra::arrangeGrob(p_box, p_violin, p_mean, p_high, ncol = 2, nrow = 2,
-                                      top = grid::textGrob("Activity Scores Summary Statistics",
-                                        gp = grid::gpar(fontsize = 16, fontface = "bold")))
+  
+  all_plots <- list(boxplot = p_box, violin = p_violin, mean_plot = p_mean, high_count_plot = p_high)
+  
+  all_plots_grid <- gridExtra::arrangeGrob(p_box,p_violin,p_mean,p_high, ncol = 2, nrow = 2)
+  title  <- grid::textGrob("Activity Scores Summary Statistics",
+                                      gp = grid::gpar(fontsize = 16, fontface = "bold"))
+  combined <- gridExtra::arrangeGrob(title,
+                                      all_plots_grid,
+                                      heights = c(0.1, 0.9),
+                                      ncol = 1)
   if (save) {
     fname <- filename %||% "AUC_summary_statistics.pdf"
     fpath <- file.path(out_dir, fname)
@@ -449,13 +461,14 @@ plot_auc_summary_statistics <- function(x, labels = NULL, high_threshold = 0.5,
   } else {
     .draw_pages(list(combined))
   }
-  invisible(combined)
+  invisible(all_plots)
 }
 
 # ---- Public: plot_auc_heatmap -------------------------------------------
 
 #' @export
 plot_auc_heatmap <- function(x, tf_names = NULL, labels = NULL, top_n = NULL,
+                            cmap = "cividis",
                              save = FALSE, filename = NULL, out_dir = getwd(),
                              width = 10, height = NULL) {
   if (!requireNamespace("ggplot2", quietly = TRUE)) stop("ggplot2 required")
@@ -492,11 +505,19 @@ plot_auc_heatmap <- function(x, tf_names = NULL, labels = NULL, top_n = NULL,
   )
   long$tf        <- factor(long$tf,        levels = rev(rownames(num_mat)))
   long$condition <- factor(long$condition, levels = colnames(num_mat))
-
+  
+  # Build palette function and compute colors
+  pal_fun <- .build_palette_function(cmap, domain = long$auc[!is.na(long$auc)])
+  long$fill_color <- pal_fun(long$auc)
+  long$text_color <- .get_text_color(long$fill_color)
+  # Build colour scale
+  fill_scale <- .build_ggplot_fill_scale(cmap)
+  
   p <- ggplot2::ggplot(long, ggplot2::aes(x = .data$condition, y = .data$tf, fill = .data$auc)) +
     ggplot2::geom_tile(colour = "grey80") +
     ggplot2::geom_text(ggplot2::aes(label = sprintf("%.3f", .data$auc)), size = 3) +
-    ggplot2::scale_fill_viridis_c(option = "C", na.value = "grey90") +
+    fill_scale +
+    ggplot2::scale_colour_identity() +
     ggplot2::labs(x = "Phenotype", y = "TF", fill = "Mean AUC", title = "Mean Activity Score per TF") +
     ggplot2::theme_minimal() +
     ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
@@ -512,33 +533,6 @@ plot_auc_heatmap <- function(x, tf_names = NULL, labels = NULL, top_n = NULL,
     print(p)
   }
   invisible(p)
-}
-
-# ---- Public: export_auc_pdfs --------------------------------------------
-
-#' @export
-export_auc_pdfs <- function(x, out_dir, prefix = "SimiCviz", labels = NULL,
-                            overwrite = FALSE, ...) {
-  plot_dir <- file.path(out_dir, "plots", "auc")
-  dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
-  res <- list()
-  tryCatch({ plot_auc_distributions(x, labels = labels, save = TRUE,
-    filename = paste0(prefix, "_auc_distributions.pdf"), out_dir = plot_dir, ...)
-    res$distributions <- file.path(plot_dir, paste0(prefix, "_auc_distributions.pdf"))
-  }, error = function(e) message("Skipping distributions: ", conditionMessage(e)))
-  tryCatch({ plot_auc_cumulative(x, labels = labels, save = TRUE,
-    filename = paste0(prefix, "_auc_cumulative.pdf"), out_dir = plot_dir, ...)
-    res$cumulative <- file.path(plot_dir, paste0(prefix, "_auc_cumulative.pdf"))
-  }, error = function(e) message("Skipping cumulative: ", conditionMessage(e)))
-  tryCatch({ plot_auc_summary_statistics(x, labels = labels, save = TRUE,
-    filename = paste0(prefix, "_auc_summary.pdf"), out_dir = plot_dir, ...)
-    res$summary <- file.path(plot_dir, paste0(prefix, "_auc_summary.pdf"))
-  }, error = function(e) message("Skipping summary: ", conditionMessage(e)))
-  tryCatch({ plot_auc_heatmap(x, labels = labels, save = TRUE,
-    filename = paste0(prefix, "_auc_heatmap.pdf"), out_dir = plot_dir, ...)
-    res$heatmap <- file.path(plot_dir, paste0(prefix, "_auc_heatmap.pdf"))
-  }, error = function(e) message("Skipping heatmap: ", conditionMessage(e)))
-  invisible(res)
 }
 
 # ---- Internal helpers ---------------------------------------------------
