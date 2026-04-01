@@ -524,6 +524,20 @@ all_tfs_barplots <- plot_tf_weights(
 all_tfs_barplots[[1]]
 ```
 
+### Regulatory Network Heatmap
+You can extract a TF regulon with the function `get_tf_network` and plot in in heatmap fashion.
+```{r}
+network <- get_tf_network(simic_full, "Tet2", r2_threshold = 0.7)
+print(head(network))
+
+plot_tf_network_heatmap(simic_full, "Tet2", 
+                        save = FALSE, 
+                        top_n = 15,
+                        r2_threshold = 0.7,
+                        show_values = T, 
+                        cmap = c("purple","white","yellow"))
+
+```
 # Dissimilarity Analysis
 
 To prioritize those TFs of interest, that might be driving the regulatory differences between our groups we perform a dissimilarity analysis by comparing per-cell TF activity-score distributions across phenotype labels using the minmax version of total variation distance for multiple distributions. This metric has values between 0 and 1, with values closer to 0 when the group of distributions is more similar to each other. Consequently, higher scores indicate greater regulatory dissimilarity between conditions — i.e., TFs whose activity differs most across phenotypes.
@@ -579,16 +593,6 @@ plot_dissimilarity_heatmap(simic,
                             cmap=c("red", "white", "blue"),
                             save = FALSE)
 ```
-```{r}
-plot_dissimilarity_heatmap(simic,
-                           labels = c(0,3),
-                            cell_groups = cell_groups, 
-                            top_n = 5, 
-                            sort_by = "mean_score",
-                            cmap=c("white","purple"),
-                            save = FALSE)                         
-```
-
 
 
 # Activity Score Distributions
@@ -649,7 +653,7 @@ plot_auc_cumulative(
 Compute area-under-curve metrics from ECDF comparisons:
 
 ```{r, eval=TRUE}
-ecdf_metrics <- calculate_ecdf_auc(simic, tf_names = simic@tf_ids[1:6])
+ecdf_metrics <- calculate_ecdf_auc(simic, tf_names = simic@tf_ids[1:4])
 head(ecdf_metrics)
 ```
 ## Summary Statistics

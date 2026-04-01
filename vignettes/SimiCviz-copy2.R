@@ -16,7 +16,7 @@ simic_full <- readRDS(system.file("extdata", file.path("simic_full.rds"),
 #  
 #  # Load entire SimiCPipeline run automatically
 #  simic_full <- load_SimiCPipeline(
-#    project_dir = "/home/workdir/SimiCviz/inst/extdata",
+#    project_dir = "path/to/simic_run",
 #    run_name = "example1",
 #    lambda1 = "0.01",
 #    lambda2 = "0.001"
@@ -296,6 +296,18 @@ all_tfs_barplots <- plot_tf_weights(
 ## ---------------------------------------------------------
 all_tfs_barplots[[1]]
 
+## ---------------------------------------------------------
+network <- get_tf_network(simic_full, "Tet2", r2_threshold = 0.7)
+print(head(network))
+
+plot_tf_network_heatmap(simic_full, "Tet2", 
+                        save = FALSE, 
+                        top_n = 15,
+                        r2_threshold = 0.7,
+                        show_values = T, 
+                        cmap = c("purple","white","yellow"))
+
+
 ## ----collapse=TRUE, results='hold'------------------------
 dis_score <- calculate_dissimilarity(simic)
 top_tfs <- rownames(dis_score)
@@ -338,15 +350,6 @@ plot_dissimilarity_heatmap(simic,
                             cmap=c("red", "white", "blue"),
                             save = FALSE)
 
-## ---------------------------------------------------------
-plot_dissimilarity_heatmap(simic,
-                           labels = c(0,3),
-                            cell_groups = cell_groups, 
-                            top_n = 5, 
-                            sort_by = "mean_score",
-                            cmap=c("white","purple"),
-                            save = FALSE)                         
-
 ## ----fig.height=10, fig.width=10--------------------------
 # Plot distributions for top TFs
 plot_auc_distributions(
@@ -387,7 +390,7 @@ plot_auc_cumulative(
 )
 
 ## ----eval=TRUE--------------------------------------------
-ecdf_metrics <- calculate_ecdf_auc(simic, tf_names = simic@tf_ids[1:6])
+ecdf_metrics <- calculate_ecdf_auc(simic, tf_names = simic@tf_ids[1:4])
 head(ecdf_metrics)
 
 ## ---------------------------------------------------------
