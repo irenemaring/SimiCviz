@@ -633,7 +633,7 @@ plot_auc_distributions(simic,
 
 ### Cumulative distributions (ECDF)
 
-```{r fig.height=10, fig.width=10, echo=FALSE}
+```{r fig.height=10, fig.width=10}
 plot_auc_cumulative(
   simic,
   tf_names = top_tfs[1:4],

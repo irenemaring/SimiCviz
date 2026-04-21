@@ -611,9 +611,9 @@ setMethod(
   n_tfs <- length(tfs)
   auc_scores <- numeric(n_tfs)
   names(auc_scores) <- tfs
-  
   # For each TF
   for (tf in tfs) {
+    
     # Extract targets and weights for this TF
     tf_data <- weight_df[weight_df$tf == tf, ]
     
@@ -628,9 +628,9 @@ setMethod(
     # Get expression and weights for these targets
     expr_vals <- expr_row[targets_in_tf]
     weight_vals <- tf_data$weight[match(targets_in_tf, tf_data$target)]
-    target_norm  <- target_norm[match(targets_in_tf, names(target_norm))]
+    target_norm_regulon  <- target_norm[match(targets_in_tf, names(target_norm))]
     # Normalize weights
-    weights_norm <- weight_vals / target_norm
+    weights_norm <- weight_vals / target_norm_regulon
     # Determine sorting order
     if (sort_by == "expression") {
       sort_idx <- order(expr_vals, decreasing = TRUE)
