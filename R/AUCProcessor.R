@@ -279,13 +279,6 @@ setMethod(
     if (!sort_by %in% c("expression", "weight")) {
       stop("sort_by must be one of: 'expression' or 'weight'")
     }
-    
-    if (verbose) {
-      message("Starting AUC computation...")
-      message(sprintf("  Sorting by: %s", sort_by))
-      message(sprintf("  Targets: %.0f%% of available", percent_of_target * 100))
-    }
-    
     ts <- Sys.time()
     
     # Map cells to labels for efficient lookup
@@ -295,121 +288,163 @@ setMethod(
     expr_targets <- Matrix::t(object@expression[object@target_ids, , drop = FALSE])
     
     # Precompute Euclidean norm of target expression
-    target_norm <- sqrt(colSums(as.matrix(expr_targets)^2))
+    target_norm <- sqrt(Matrix::colSums(expr_targets^2))
+    names(target_norm) <- colnames(expr_targets)
+    # Pre-split weights once per label
+    weights_by_label <- split(object@weights, object@weights$label)
+
+    # Work units are CELLS (not labels) -> works well even with 1 label
+    all_cells <- rownames(expr_targets)
+    if (is.null(all_cells)) stop("Cell IDs are missing in expression matrix.")
+    n_cells <- length(all_cells)
+    n_labels <- length(unique(object@cell_labels$label))
     
-    # Get unique labels in order
-    unique_labels <- sort(unique(object@cell_labels$label))
-    n_labels <- length(unique_labels)
+    # ---- Adaptive backend selection ----
+    req_cores <- max(1L, as.integer(object@parallel_params$n_cores))
+    user_backend <- object@parallel_params$backend
+    is_windows <- identical(.Platform$OS.type, "windows")
     
-    if (verbose) {
-      message(sprintf("Computing activity scores for %d label(s) using %d cores...",
-                      n_labels, object@parallel_params$n_cores))
+    # Default behavior if backend was not explicitly valid
+    if (is.null(user_backend) || !(user_backend %in% c("sequential", "multicore", "multisession"))) {
+      user_backend <- "sequential"
     }
-    
-    # Setup BiocParallel backend
-    if (object@parallel_params$n_cores > 1) {
-      if (object@parallel_params$backend == "multicore") {
-        BPPARAM <- BiocParallel::MulticoreParam(
-          workers = object@parallel_params$n_cores,
-          progressbar = verbose
-        )
-      } else if (object@parallel_params$backend == "multisession") {
-        BPPARAM <- BiocParallel::SnowParam(
-          workers = object@parallel_params$n_cores,
-          type = "SOCK",
-          progressbar = verbose
-        )
-        # DEBUG: Print worker info
-        if (verbose) {
-          message(sprintf("SnowParam created with %d workers", 
-                          BiocParallel::bpnworkers(BPPARAM)))
-        }
+
+    # Auto strategy:
+    # - if user asked sequential or cores==1 -> serial
+    # - else prefer multicore on non-Windows
+    # - on Windows, or if user explicitly asks multisession -> SnowParam
+    if (req_cores <= 1L || user_backend == "sequential") {
+      effective_backend <- "sequential"
+    } else if (user_backend == "multisession") {
+      effective_backend <- "multisession"
+    } else if (user_backend == "multicore") {
+      if (is_windows) {
+        effective_backend <- "multisession"
       } else {
-        BPPARAM <- BiocParallel::SerialParam()
+        effective_backend <- "multicore"
       }
     } else {
-      BPPARAM <- BiocParallel::SerialParam()
+      # defensive fallback
+      effective_backend <- if (is_windows) "multisession" else "multicore"
+    }
+    # Small-workload fallback to serial
+    # heuristic: if very few cells, parallel overhead dominates
+    if (n_cells < 100L || n_cells < (50L * req_cores)) {
+      effective_backend <- "sequential"
+    }
+    # ---- Build BiocParallel param ----
+    if (effective_backend == "multicore") {
+      BPPARAM <- BiocParallel::MulticoreParam(
+        workers = req_cores,
+        progressbar = verbose
+      )
+    } else if (effective_backend == "multisession") {
+      BPPARAM <- BiocParallel::SnowParam(
+        workers = req_cores,
+        type = "SOCK",
+        progressbar = verbose
+      )
+    } else {
+      BPPARAM <- BiocParallel::SerialParam(progressbar = verbose)
     }
     
-    # Compute AUC for each label using BiocParallel
-    tryCatch(suppressWarnings({
-      auc_list <- BiocParallel::bplapply(
-        unique_labels,
-        function(label) {
-          # Get cells belonging to this label
-          cells_in_label <- names(cell_to_label)[cell_to_label == label]
-          
-          # Extract weights for this label
-          weight_subset <- object@weights[object@weights$label == label, ]
-          
-          # Process all cells in this label
-          label_results <- lapply(cells_in_label, function(cell_id) {
-            
-            expr_row <- expr_targets[cell_id, ]
-            
-            auc_scores <- .compute_cell_auc(
-              expr_row = expr_row,
-              weight_df = weight_subset,
-              target_norm = target_norm,
-              sort_by = sort_by,
-              select_top_k = select_top_k,
-              percent_of_target = percent_of_target
-            )
-            
-            data.frame(
-              cell = cell_id,
-              as.data.frame(t(auc_scores)),
-              stringsAsFactors = FALSE
-            )
-          })
-          
-          do.call(rbind, label_results)
-        },
-        BPPARAM = BPPARAM
-      )
+    n_workers <- BiocParallel::bpnworkers(BPPARAM)
+    # ---- Chunking strategy (parallelize over chunks of cells) ----
+    # Bigger chunks reduce scheduler overhead; especially important for SnowParam
+    if (effective_backend == "multisession") {
+      chunk_size <- max(50L, ceiling(n_cells / (n_workers * 2L)))
+    } else if (effective_backend == "multicore") {
+      chunk_size <- max(20L, ceiling(n_cells / (n_workers * 4L)))
+    } else {
+      chunk_size <- n_cells
+    }
+    chunk_size <- min(chunk_size, n_cells)
+    if (verbose) {
+      message("Starting AUC computation...")
+      message(sprintf("  Sorting by: %s", sort_by))
+      message(sprintf("  Targets: %.0f%% of available", percent_of_target * 100))
+      message(sprintf("  Labels: %d | Cells: %d", n_labels, n_cells))
+      message(sprintf("  Backend requested: %s | backend used: %s | workers: %d",
+                      object@parallel_params$backend, effective_backend, n_workers))
+      if (effective_backend == "multisession") {
+        message("  Note: multisession (SOCK) has worker startup/serialization overhead;")
+        message("        best for larger datasets or Windows compatibility.")
+      }
+    }
+    # Capture all required variables explicitly for SOCK workers
+    .cell_to_label   <- cell_to_label
+    .expr_targets    <- expr_targets
+    .weights_by_label <- weights_by_label
+    .target_norm     <- target_norm
+    .tf_ids          <- object@tf_ids
+    .sort_by         <- sort_by
+    .select_top_k    <- select_top_k
+    .percent_of_target <- percent_of_target
+# ---- Cell scorer ----
+    compute_one_cell <- function(i) {
+      cell_id <- rownames(.expr_targets)[i]
+      label   <- .cell_to_label[[cell_id]]
+
+      full <- rep(NA_real_, length(.tf_ids))
+      names(full) <- .tf_ids
+
+      if (!is.null(label)) {
+        weight_subset <- .weights_by_label[[as.character(label)]]
+        if (!is.null(weight_subset) && nrow(weight_subset) > 0) {
+          expr_row <- .expr_targets[i, , drop = TRUE]
+          names(expr_row) <- colnames(.expr_targets)
+          out <- .compute_cell_auc(
+            expr_row         = expr_row,
+            weight_df        = weight_subset,
+            target_norm      = .target_norm,
+            sort_by          = .sort_by,
+            select_top_k     = .select_top_k,
+            percent_of_target = .percent_of_target
+          )
+        full[names(out)] <- out
+        }
+      }
       
-      # Combine results from all labels
-      auc_list <- do.call(rbind, auc_list)
-      
-    }), error = function(e) {
-      warning(sprintf("Parallel processing failed: %s. Attempting sequential processing...", e$message))
-      # Fall back to sequential processing
-      BPPARAM <- BiocParallel::SerialParam()
-      auc_list <<- BiocParallel::bplapply(
-        unique_labels,
-        function(label) {
-          cells_in_label <- names(cell_to_label)[cell_to_label == label]
-          weight_subset <- object@weights[object@weights$label == label, ]
-          
-          label_results <- lapply(cells_in_label, function(cell_id) {
-          expr_row <- expr_targets[cell_id, ]
-            
-            auc_scores <- .compute_cell_auc(
-              expr_row = expr_row,
-              weight_df = weight_subset,
-              target_norm = target_norm,
-              sort_by = sort_by,
-              select_top_k = select_top_k,
-              percent_of_target = percent_of_target
-            )
-            
-            data.frame(
-              cell = cell_id,
-              as.data.frame(t(auc_scores)),
-              stringsAsFactors = FALSE
-            )
-          })
-          
-          do.call(rbind, label_results)
-        },
-        BPPARAM = BPPARAM
+      data.frame(
+        cell = cell_id,
+        as.data.frame(t(full)),
+        stringsAsFactors = FALSE,
+        check.names = FALSE
       )
-      auc_list <<- do.call(rbind, auc_list)
-    })
+    }
     
-    # Convert to matrix format (cells x TFs)
-    rownames(auc_list) <- auc_list$cell
-    auc_result <- as.data.frame(auc_list[, -1, drop = FALSE])
+    # ---- Run + fallback ----
+    all_idx <- seq_len(nrow(expr_targets))
+    idx_chunks <- split(all_idx, ceiling(seq_along(all_idx) / chunk_size))
+
+    auc_chunks <- tryCatch(
+      {
+        suppressWarnings(
+          BiocParallel::bplapply(idx_chunks, function(idx) {
+            library(Matrix)
+            library(SimiCviz)
+            rows <- lapply(idx, compute_one_cell)
+            do.call(rbind, rows)
+          }, BPPARAM = BPPARAM)
+        )
+      },
+      error = function(e) {
+        warning(sprintf(
+          "Parallel processing failed: %s. Falling back to sequential processing...",
+          e$message
+        ))
+        lapply(idx_chunks, function(idx) {
+          rows <- lapply(idx, compute_one_cell)
+          do.call(rbind, rows)
+        })
+      }
+    )
+    
+    # ---- Combine + preserve order ----
+    auc_df <- do.call(rbind, auc_chunks)
+    rownames(auc_df) <- auc_df$cell
+    auc_result <- auc_df[, -1, drop = FALSE]
+    auc_result <- auc_result[object@cell_labels$cell, , drop = FALSE]
     
     object@auc_results <- auc_result
     
@@ -419,6 +454,10 @@ setMethod(
     if (verbose) {
       message(sprintf("AUC computation completed in %.2f seconds!", as.numeric(elapsed)))
       message(sprintf("  Result: %d cells x %d TFs", nrow(auc_result), ncol(auc_result)))
+      if (effective_backend == "multisession") {
+        message("  Tip: if runtime is dominated by setup overhead, try fewer workers (e.g., 2-4)")
+        message("       or use backend='multicore' on Linux/macOS.")
+      }
     }
     
     object
