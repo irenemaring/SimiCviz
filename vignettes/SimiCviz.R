@@ -1,4 +1,4 @@
-## ----setup, include=FALSE---------------------------------
+## ----setup, include=FALSE-----------------------------------------------------
 knitr::opts_chunk$set(
   collapse = TRUE,
   eval = TRUE,
@@ -7,32 +7,36 @@ knitr::opts_chunk$set(
 options(width=60)
 library(SimiCviz)
 
-## ----echo = FALSE-----------------------------------------
+
+## ----echo = FALSE-------------------------------------------------------------
 simic_full <- readRDS(system.file("extdata", file.path("simic_full.rds"), 
                                   package = "SimiCviz"))
 
-## ----eval = FALSE, results='hold'-------------------------
-#  library(SimiCviz)
-#  
-#  # Load entire SimiCPipeline run automatically
-#  simic_full <- load_SimiCPipeline(
-#    project_dir = "path/to/simic_run",
-#    run_name = "example1",
-#    lambda1 = "0.01",
-#    lambda2 = "0.001"
-#  )
-#  
-#  # Set display names and colors for visualization (Part 3)
-#  simic_full <- setLabelNames(
-#    simic_full,
-#    label_names = c("control", "PD-L1", "DAC", "Combination"),
-#    colors = c("#e0e0e0", "#a8c8ff", "#ffb6b6", "#c1a9e0")
-#  )
 
-## ---------------------------------------------------------
+## ----eval = FALSE, results='hold'---------------------------------------------
+# library(SimiCviz)
+# 
+# # Load entire SimiCPipeline run automatically
+# simic_full <- load_SimiCPipeline(
+#   project_dir = "path/to/simic_run",
+#   run_name = "example1",
+#   lambda1 = "0.01",
+#   lambda2 = "0.001"
+# )
+# 
+# # Set display names and colors for visualization (Part 3)
+# simic_full <- setLabelNames(
+#   simic_full,
+#   label_names = c("control", "PD-L1", "DAC", "Combination"),
+#   colors = c("#e0e0e0", "#a8c8ff", "#ffb6b6", "#c1a9e0")
+# )
+
+
+## -----------------------------------------------------------------------------
 simic_full
 
-## ---------------------------------------------------------
+
+## -----------------------------------------------------------------------------
 
 # Load weights from pickle
 weights_file <- system.file("extdata", 
@@ -43,7 +47,8 @@ simic_weights <- read_weights_pickle(weights_file)
 simic_weights[[1]][, 1:6]
 
 
-## ---------------------------------------------------------
+
+## -----------------------------------------------------------------------------
 # Load GRN weights (method agnostic)
 
 weight_path <- system.file("extdata", "example_weights.csv", 
@@ -55,7 +60,8 @@ head(weights_df)
 
 # If your method uses different column names you need to rename them
 
-## ---------------------------------------------------------
+
+## -----------------------------------------------------------------------------
 # Load from CSV (recommended format: columns 'cell', 'label')
 cell_labels_path <- system.file("extdata",
   file.path("inputFiles", "treatment_annotation.csv"), 
@@ -64,17 +70,19 @@ cell_labels_path <- system.file("extdata",
 cell_labels <- load_cell_labels(cell_labels_path, header = TRUE, sep = ",")
 head(cell_labels)
 
-## ----eval=FALSE-------------------------------------------
-#  # From vector (will generate cell_1, cell_2, ... names)
-#  cell_labels <- c(0, 0, 1, 1, 2, 2)  # Must match order of AUC rows
-#  
-#  # From named vector
-#  cell_labels <- c(cell_A = 0, cell_B = 0, cell_C = 1)
-#  
-#  # From data.frame
-#  cell_labels <- data.frame(cell = c("cell_A", "cell_B"), label = c(0, 1))
 
-## ---------------------------------------------------------
+## ----eval=FALSE---------------------------------------------------------------
+# # From vector (will generate cell_1, cell_2, ... names)
+# cell_labels <- c(0, 0, 1, 1, 2, 2)  # Must match order of AUC rows
+# 
+# # From named vector
+# cell_labels <- c(cell_A = 0, cell_B = 0, cell_C = 1)
+# 
+# # From data.frame
+# cell_labels <- data.frame(cell = c("cell_A", "cell_B"), label = c(0, 1))
+
+
+## -----------------------------------------------------------------------------
 # Load from multiple formats
 expression_mat_path <- system.file("extdata",
   file.path("inputFiles", "example1_expression.pickle"),
@@ -85,7 +93,8 @@ expression_mat <- load_expression_matrix(expression_mat_path)
 print(class(expression_mat))
 print(dim(expression_mat))
 
-## ---------------------------------------------------------
+
+## -----------------------------------------------------------------------------
 # From .pickle SimiC files
 
 # Extract Adjusted R squared from SimiC outputs
@@ -103,7 +112,8 @@ viz_obj_simic <- SimiCvizExperiment(
 viz_obj_simic
 
 
-## ---------------------------------------------------------
+
+## -----------------------------------------------------------------------------
 # From SimiC input files
 # adj_r2_threshold: For SimiCPipeline style outputs it will look in metadata of viz_obj_simic, for "simic@meta$adjusted_r_squared" and filter out targets with lower R²)
 # n_cores: Number of workers if backend = 'multissession' or 
@@ -126,7 +136,8 @@ viz_obj_simic <- calculate_activity_scores(
 auc_scores <- viz_obj_simic@auc$collected
 head(auc_scores[, 1:5])
 
-## ---------------------------------------------------------
+
+## -----------------------------------------------------------------------------
 # Initialize processor with weights and expression
 AS_processor <- AUCProcessor(
   weights = weights_df,
@@ -147,74 +158,80 @@ AS_processor <- compute_auc(
   verbose = TRUE
 )
 
-## ---------------------------------------------------------
+
+## -----------------------------------------------------------------------------
 # Extract results in wide format (default)
 auc_wide <- get_auc(AS_processor, format = "wide")
 head(auc_wide)
 
-## ---------------------------------------------------------
+
+## -----------------------------------------------------------------------------
 # Extract results long format
 auc_long <- get_auc(AS_processor, format = "long") # Long format
 head(auc_long)
 
-## ----eval = F---------------------------------------------
-#  weights_df <- read.csv("path/to/your/weights.csv")
-#  weights_df_filtered <- weights_df[weights_df$p_value < 0.01,]
-#  # From CSV files
-#  viz_obj <- SimiCvizExperiment(
-#    weights = weights_df_filtered,
-#    auc = NULL,  # Will compute this inthe next section later but can be loaded as well
-#    cell_labels = cell_labels,
-#    label_names = c("control","PD-L1","DAC","Combination"),
-#    colors = c("#e0e0e0", "#a8c8ff", "#ffb6b6", "#c1a9e0"),
-#    meta=list() # Anything you want to store in a list format
-#    )
-#  
-#  viz_obj
-#  viz_obj <- calculate_activity_scores(
-#                viz_obj,
-#                expression = expression_mat_path,
-#                adj_r2_threshold = 0.7, # For SimiC style outputs
-#                sort_by="expression", # Rank targets by expression or weight
-#                select_top_k = NULL,  # Use all targets (or limit to top K)
-#                percent_of_target = 1.0,
-#                n_cores = 2,
-#                backend = "multisession",
-#                verbose = TRUE
-#              )
 
-## ----eval = FALSE-----------------------------------------
-#  # SimiC: Filter by adjusted R² (goodness of fit)
-#  
-#  processor_simic <- AUCProcessor(
-#    weights = simic_weights,
-#    expression = expr_mat,
-#    cell_labels = cell_labels,
-#    adj_r2_list = adjusted_r_squared, # a list length as simic_weights
-#    qc_type = "adj_r2",
-#    qc_threshold = 0.7  # Keep targets with R² ≥ 0.7
-#  )
-#  
-#  # SCENIC / Pando: Filter by adjusted p-value
-#  processor_scenic <- AUCProcessor(
-#    weights = weights_df,
-#    expression = expr_mat,
-#    cell_labels = cell_labels,
-#    qc_type = "p_value",
-#    qc_threshold = 0.05,  # Keep targets with adj_p_val ≤ 0.05
-#    n_cores = 4,
-#    backend = "multisession"
-#    )
-#  
-#  # Compute with the same data, different parameters
-#  processor_scenic <- compute_auc(processor_scenic, sort_by = "weight")
+## ----eval = F-----------------------------------------------------------------
+# weights_df <- read.csv("path/to/your/weights.csv")
+# weights_df_filtered <- weights_df[weights_df$p_value < 0.01,]
+# # From CSV files
+# viz_obj <- SimiCvizExperiment(
+#   weights = weights_df_filtered,
+#   auc = NULL,  # Will compute this inthe next section later but can be loaded as well
+#   cell_labels = cell_labels,
+#   label_names = c("control","PD-L1","DAC","Combination"),
+#   colors = c("#e0e0e0", "#a8c8ff", "#ffb6b6", "#c1a9e0"),
+#   meta=list() # Anything you want to store in a list format
+#   )
+# 
+# viz_obj
+# viz_obj <- calculate_activity_scores(
+#               viz_obj,
+#               expression = expression_mat_path,
+#               adj_r2_threshold = 0.7, # For SimiC style outputs
+#               sort_by="expression", # Rank targets by expression or weight
+#               select_top_k = NULL,  # Use all targets (or limit to top K)
+#               percent_of_target = 1.0,
+#               n_cores = 2,
+#               backend = "multisession",
+#               verbose = TRUE
+#             )
 
-## ---------------------------------------------------------
+
+## ----eval = FALSE-------------------------------------------------------------
+# # SimiC: Filter by adjusted R² (goodness of fit)
+# 
+# processor_simic <- AUCProcessor(
+#   weights = simic_weights,
+#   expression = expr_mat,
+#   cell_labels = cell_labels,
+#   adj_r2_list = adjusted_r_squared, # a list length as simic_weights
+#   qc_type = "adj_r2",
+#   qc_threshold = 0.7  # Keep targets with R² ≥ 0.7
+# )
+# 
+# # SCENIC / Pando: Filter by adjusted p-value
+# processor_scenic <- AUCProcessor(
+#   weights = weights_df,
+#   expression = expr_mat,
+#   cell_labels = cell_labels,
+#   qc_type = "p_value",
+#   qc_threshold = 0.05,  # Keep targets with adj_p_val ≤ 0.05
+#   n_cores = 4,
+#   backend = "multisession"
+#   )
+# 
+# # Compute with the same data, different parameters
+# processor_scenic <- compute_auc(processor_scenic, sort_by = "weight")
+
+
+## -----------------------------------------------------------------------------
 # Recall above examples
  simic_full # Complete SimiCpipeline output
  viz_obj_simic # SimiCPipeline weights -> `calculate_activity_scores`
 
-## ---------------------------------------------------------
+
+## -----------------------------------------------------------------------------
 # Create SimiCvizExperiment
 simic <- SimiCvizExperiment(weights = simic_weights,
                              auc = auc_wide,
@@ -223,14 +240,16 @@ simic <- SimiCvizExperiment(weights = simic_weights,
                              colors = c("#e0e0e0", "#a8c8ff", "#ffb6b6", "#c1a9e0"))
 simic
 
-## ----echo = FALSE-----------------------------------------
+
+## ----echo = FALSE-------------------------------------------------------------
 plot_dir <- file.path(getwd(),"SimiCviz_output","plots")
 
-## ----eval = FALSE-----------------------------------------
-#  plot_dir <- file.path(getwd(),"SimiCviz_output")
-#  dir.create(plot_dir,recursive = TRUE)
+## ----eval = FALSE-------------------------------------------------------------
+# plot_dir <- file.path(getwd(),"SimiCviz_output")
+# dir.create(plot_dir,recursive = TRUE)
 
-## ---------------------------------------------------------
+
+## -----------------------------------------------------------------------------
 # Plot distribution of adjusted R² values across targets
 # Extract Adjusted R squared from SimiC outputs
 out <- read_pickle(weights_file)
@@ -238,7 +257,8 @@ adjusted_r_squared <- out$adjusted_r_squared
 plot_r2_distribution(adjusted_r_squared, simic, grid = c(2, 2), 
                      save = FALSE, out_dir = plot_dir)
 
-## ---------------------------------------------------------
+
+## -----------------------------------------------------------------------------
 # Select targets by adjusted R2
 unselected_targets <- list()
 selected_targets <- list()
@@ -254,7 +274,8 @@ print("Number of unselected targets per label:")
 print(sapply(unselected_targets, length)) 
 
 
-## ----fig.height=10, fig.width=10--------------------------
+
+## ----fig.height=10, fig.width=10----------------------------------------------
 plot_tf_weights(
   simic,
   tf_names = simic@tf_ids[1:4],
@@ -266,7 +287,8 @@ plot_tf_weights(
   filename = "TF_weights_barplot.pdf"
 )
 
-## ----fig.height=5, fig.width=5----------------------------
+
+## ----fig.height=5, fig.width=5------------------------------------------------
 plot_target_weights(
   simic,
   target_names = simic@target_ids[1:4],
@@ -277,7 +299,8 @@ plot_target_weights(
   filename = "Target_weights_barplot.pdf"
 )
 
-## ----include=FALSE----------------------------------------
+
+## ----include=FALSE------------------------------------------------------------
 all_tfs_barplots <- plot_tf_weights(
                           simic,
                           top_n = 25, 
@@ -286,17 +309,18 @@ all_tfs_barplots <- plot_tf_weights(
 
 
 
-## ----eval = F---------------------------------------------
-#  all_tfs_barplots <- plot_tf_weights(
-#                            simic,
-#                            top_n = 25,
-#                            grid = NULL,
-#                            allowed_targets = selected_targets)
+## ----eval = F-----------------------------------------------------------------
+# all_tfs_barplots <- plot_tf_weights(
+#                           simic,
+#                           top_n = 25,
+#                           grid = NULL,
+#                           allowed_targets = selected_targets)
 
-## ---------------------------------------------------------
+## -----------------------------------------------------------------------------
 all_tfs_barplots[[1]]
 
-## ---------------------------------------------------------
+
+## -----------------------------------------------------------------------------
 network <- get_tf_network(simic_full, "Tet2", r2_threshold = 0.7)
 print(head(network))
 
@@ -308,17 +332,20 @@ plot_tf_network_heatmap(simic_full, "Tet2",
                         cmap = c("purple","white","yellow"))
 
 
-## ----collapse=TRUE, results='hold'------------------------
+
+## ----collapse=TRUE, results='hold'--------------------------------------------
 dis_score <- calculate_dissimilarity(simic)
 top_tfs <- rownames(dis_score)
 
-## ---------------------------------------------------------
+
+## -----------------------------------------------------------------------------
 plot_dissimilarity_heatmap(simic, 
                            top_n = 5, 
                            cmap = "viridis",
                            save = FALSE)
 
-## ---------------------------------------------------------
+
+## -----------------------------------------------------------------------------
 metadata <- read.csv(system.file("extdata/metadata.csv", 
   package = "SimiCviz"))
  
@@ -340,7 +367,8 @@ plot_dissimilarity_heatmap(simic,
                             save = FALSE, out_dir = plot_dir,
                             filename = "dissimilarity_heatmap_grouped.pdf")
 
-## ---------------------------------------------------------
+
+## -----------------------------------------------------------------------------
 # For labels 0,2
 plot_dissimilarity_heatmap(simic,
                             labels = c(0,2),
@@ -350,7 +378,8 @@ plot_dissimilarity_heatmap(simic,
                             cmap=c("red", "white", "blue"),
                             save = FALSE)
 
-## ----fig.height=10, fig.width=10--------------------------
+
+## ----fig.height=10, fig.width=10----------------------------------------------
 # Plot distributions for top TFs
 plot_auc_distributions(
   simic,
@@ -365,7 +394,7 @@ plot_auc_distributions(
   grid = c(2, 2)
 )
 
-## ----fig.height=5, fig.width=10---------------------------
+## ----fig.height=5, fig.width=10-----------------------------------------------
 # Plot top 4 TFs density distributions
 plot_auc_distributions(simic,
                        labels = c(0,3),
@@ -378,7 +407,8 @@ plot_auc_distributions(simic,
                        save = FALSE,
                        grid = c(1,2))
 
-## ----fig.height=10, fig.width=10--------------------------
+
+## ----fig.height=10, fig.width=10----------------------------------------------
 plot_auc_cumulative(
   simic,
   tf_names = top_tfs[1:4],
@@ -389,16 +419,20 @@ plot_auc_cumulative(
   out_dir = plot_dir
 )
 
-## ----eval=TRUE--------------------------------------------
+
+## ----eval=TRUE----------------------------------------------------------------
 ecdf_metrics <- calculate_ecdf_auc(simic, tf_names = simic@tf_ids[1:4])
 head(ecdf_metrics)
 
-## ---------------------------------------------------------
+
+## -----------------------------------------------------------------------------
 plot_auc_heatmap(simic, top_n = 20)
 
-## ----eval=TRUE--------------------------------------------
+
+## ----eval=TRUE----------------------------------------------------------------
 summary_plot <- plot_auc_summary_statistics(simic)
 
-## ---------------------------------------------------------
+
+## -----------------------------------------------------------------------------
 sessionInfo()
 

@@ -4,7 +4,7 @@
 \alias{get_auc,AUCProcessor-method}
 \title{Get computed activity scores}
 \usage{
-\S4method{get_auc}{AUCProcessor}(object, format = "matrix")
+\S4method{get_auc}{AUCProcessor}(object, format = "wide")
 }
 \arguments{
 \item{object}{A \code{\linkS4class{AUCProcessor}} object.}
