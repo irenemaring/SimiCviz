@@ -118,16 +118,18 @@ AUCProcessor <- function(weights,
       message("`weights` provided as a data.frame")
       weight_df <- weights
       # Filter weights by quality metric pvalue if provided in column.
-      if (qc_type != "adj_r2" && qc_type %in% colnames(weight_df) ){
+      if (!is.null(qc_type) && qc_type != "adj_r2" && qc_type %in% colnames(weight_df) ){
         message(sprintf("Filtering weights by %s < threshold %g",qc_type, qc_threshold))
         mask_pval <- which(weight_df[[qc_type]] <= qc_threshold) # Keep below threshold
         weight_df <- weight_df[mask_pval, , drop = FALSE]
-      } else if (qc_type == "adj_r2" && "adj_r2" %in% colnames(weight_df)) {
+      } else if (!is.null(qc_type) && qc_type == "adj_r2" && "adj_r2" %in% colnames(weight_df)) {
         message("Filtering weights by adjusted R2 threshold...")
         mask_adj_r2 <- which(weight_df$adj_r2 >= qc_threshold)
         weight_df <- weight_df[mask_adj_r2, , drop = FALSE]
       } else {
-        message(sprintf("No %s column found in weights data.frame; skipping filtering.",qc_type))
+        if (!is.null(qc_type)) {
+          message(sprintf("No %s column found in weights data.frame; skipping filtering.",qc_type))
+        }
       }
   }
   }
@@ -478,7 +480,7 @@ setMethod(
 setMethod(
   "get_auc",
   signature(object = "AUCProcessor"),
-  function(object, format = "matrix") {
+  function(object, format = "wide") {
     
     if (nrow(object@auc_results) == 0) {
       stop("No AUC results computed yet. Run compute_auc() first.")
@@ -495,7 +497,7 @@ setMethod(
         result$label <- label_map[result$cell]
 
     } else {
-      stop("format must be 'matrix' or 'dataframe'")
+      stop("format must be 'wide' or 'long'")
     }
     result
 }
@@ -602,7 +604,7 @@ setMethod(
 
   
   # Check expression is genes x cells
-  if (!is.matrix(expression) && !is.data.frame(expression) && !class(expression)[1]== "dgCMatrix") {
+  if (!is.matrix(expression) && !is.data.frame(expression) && !inherits(expression, "dgCMatrix")) {
     stop("expression must be a dgCMatrix, matrix or data.frame")
   }
   

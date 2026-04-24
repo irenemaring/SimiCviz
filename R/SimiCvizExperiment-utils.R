@@ -38,6 +38,7 @@ calculate_activity_scores <- function(simic,
   qc_threshold <- NULL
   qc_type <- NULL
   adjusted_r_squared <- NULL
+  adj_r2_list <- NULL
   
   # Load expression if not provided
   if (is.null(expression)) {
@@ -60,7 +61,7 @@ calculate_activity_scores <- function(simic,
     expression = expression,
     cell_labels = simic@cell_labels,
     qc_type = qc_type,
-    qc_threshold = adj_r2_threshold,
+    qc_threshold = qc_threshold,
     adj_r2_list = adj_r2_list,
     n_cores = n_cores,
     backend = backend

@@ -124,11 +124,14 @@ read_weights_csv <- function(file, ...) {
 read_auc_csv <- function(file, ...) {
   df <- utils::read.csv(file, stringsAsFactors = FALSE, ...)
   required <- c("cell", "tf", "score")
-  missing <- setdiff(required, colnames(df))
+  missing <- setdiff(required, tolower(colnames(df)))
   if (length(missing) > 0) {
     stop("Missing required columns in AUC CSV: ",
          paste(missing, collapse = ", "))
   }
+  # Normalise required column names to lowercase
+  colnames(df)[tolower(colnames(df)) %in% required] <-
+    tolower(colnames(df)[tolower(colnames(df)) %in% required])
   df
 }
 
@@ -382,7 +385,7 @@ load_expression_matrix <- function(expression) {
     stop("expression must be a file path or matrix/data.frame")
   }
   message("Converting expression matrix to sparse format...")
-  sparse_mat <- as(expr_mat, "sparseMatrix")
+  sparse_mat <- Matrix::Matrix(expr_mat, sparse = TRUE)
   sparse_mat
 }
 # ---- Main pipeline loader -----------------------------------------------
@@ -562,7 +565,9 @@ load_from_csv <- function(weights_file,
                           meta = list()) {
 
   weight_df <- read_weights_csv(weights_file)
-  weights   <- .convert_weights_df_to_list(weight_df)
+  weights_res <- .convert_weights_df_to_list(weight_df)
+  weights <- if (!is.null(weights_res$weights)) weights_res$weights else weights_res
+  cell_labels <- NULL
 
   auc <- if (!is.null(auc_file)) {
     if (any(is.null(cell_labels_file), !file.exists(cell_labels_file))) {

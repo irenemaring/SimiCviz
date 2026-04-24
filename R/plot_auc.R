@@ -356,13 +356,19 @@ plot_auc_cumulative <- function(x, tf_names = NULL, labels = NULL, alpha = 0.8,
     subtitle_parts <- NULL
     if (!is.null(ecdf_df) && tf %in% rownames(ecdf_df)) {
       delta_cols <- grep("^delta_", colnames(ecdf_df), value = TRUE)
-      sub_parts  <- character()
+      sub_parts  <- list()
       if ("delta_ecdf_auc" %in% delta_cols)
-        sub_parts <- c(sub_parts, sprintf("\u0394 AUC: %.4f",  ecdf_df[tf, "delta_ecdf_auc"]))
+        sub_parts <- c(sub_parts, 
+        bquote(Delta * " AUC: " * .(sprintf("%.4f", ecdf_df[tf, "delta_ecdf_auc"]))))
       if ("delta_auc50"    %in% delta_cols)
-        sub_parts <- c(sub_parts, sprintf("\u0394 AUC50: %.4f", ecdf_df[tf, "delta_auc50"]))
-      if (length(sub_parts) > 0L) subtitle_parts <- paste(sub_parts, collapse = "  |  ")
-    }
+        sub_parts <- c(sub_parts, 
+        bquote(Delta * " AUC50: " * .(sprintf("%.4f", ecdf_df[tf, "delta_auc50"]))))
+      if (length(sub_parts) > 0L) {
+        subtitle_parts <- Reduce(function(a, b) {
+      bquote(.(a) ~ "|" ~ .(b))
+    }, sub_parts)
+  }
+  }
     p <- p + ggplot2::ggtitle(tf, subtitle_parts)
 
     if (include_table) {
@@ -443,7 +449,7 @@ plot_auc_summary_statistics <- function(x, labels = NULL, high_threshold = 0.5,
 
   p_violin <- ggplot2::ggplot(all_long, ggplot2::aes(x = .data$label_name, y = .data$value,
                                                        fill = .data$label_name)) +
-    ggplot2::geom_violin(alpha = 0.6, draw_quantiles = c(0.25, 0.5, 0.75)) +
+    ggplot2::geom_violin(alpha = 0.6, quantile.linetype = 1) +
     ggplot2::scale_fill_manual(values = col_map) +
     ggplot2::labs(x = NULL, y = "Activity Score", title = "Activity Score Distribution (Violin)") +
     ggplot2::theme_bw() +

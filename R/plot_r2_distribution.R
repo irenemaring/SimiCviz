@@ -37,6 +37,8 @@ plot_r2_distribution <- function(adjusted_r_squared,
                                  width = 10,
                                  height = NULL) {
 
+  default_colors <- c("#5e82bd", "#ed9900", "#008b00", "#cd9b9b", "#800080", "#ff676f")
+
   # --- validate adjusted_r_squared ---
   if (missing(adjusted_r_squared) || is.null(adjusted_r_squared) || !is.list(adjusted_r_squared)) {
     stop("`adjusted_r_squared` must be a named list of numeric vectors (one per label).")
