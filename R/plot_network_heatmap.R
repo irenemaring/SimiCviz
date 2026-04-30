@@ -14,7 +14,8 @@
 #'   (named by \code{label_names}).
 #' @examples
 #'  # Example usage
-#'   network <- get_tf_network(simic, "Tead1", labels = c(1, 2), r2_threshold = 0.7)
+#'   simic <- readRDS(system.file("extdata", "simic_full.rds", package = "SimiCviz"))
+#'   network <- get_tf_network(simic, simic@tf_ids[1], labels = c(1, 2), r2_threshold = 0.7)
 #'   print(network)
 #'
 #' @export
@@ -103,17 +104,16 @@ get_tf_network <- function(x, tf_name, labels = NULL, r2_threshold = NULL) {
 #'   }
 #'
 #' @examples
-#' # Basic usage
-#'   plot_tf_network_heatmap(simic, "Gata2")
+#'   simic <- readRDS(system.file("extdata", "simic_full.rds", package = "SimiCviz"))
+#'   plot_tf_network_heatmap(simic, "Pms1")
 #'
 #'   # Custom palette and top targets
-#'   plot_tf_network_heatmap(simic, "Zfp950", top_n = 15,
+#'   plot_tf_network_heatmap(simic, "Ets1", top_n = 15,
 #'                           cmap = "RdBu_r", r2_threshold = 0.7)
 #'
 #'   # Only specific labels, no saving
-#'   plot_tf_network_heatmap(simic, "Runx2", labels = c(0, 3),
+#'   plot_tf_network_heatmap(simic, "Gli3", labels = c(0, 3),
 #'                           save = FALSE)
-#'
 #'
 #' @import ggplot2
 #' @export

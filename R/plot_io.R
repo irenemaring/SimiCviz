@@ -1,4 +1,5 @@
 #' @keywords internal
+#' @noRd
 .resolve_labels <- function(x, labels = NULL) {
   if (!is.null(labels)) {
     if (is.character(labels) && !is.null(x@label_names) && all(labels %in% x@label_names)) {
@@ -17,6 +18,7 @@
 }
 
 #' @keywords internal
+#' @noRd
 .resolve_tf_names <- function(x, tf_names = NULL) {
   all_tfs <- .auc_tf_names(x)
   if (is.null(tf_names)) return(sort(all_tfs))
@@ -27,6 +29,7 @@
 }
 
 #' @keywords internal
+#' @noRd
 .paginate_plots <- function(plot_list, per_page, nrow, ncol) {
   n     <- length(plot_list)
   pages <- list()
@@ -41,6 +44,7 @@
 
 #' RStudio-safe page drawing
 #' @keywords internal
+#' @noRd
 .draw_pages <- function(pages) {
   for (pg in pages) {
     gridExtra::grid.arrange(grobs   = pg$grobs,
@@ -54,6 +58,7 @@
 
 #' RStudio-safe page saving to PDF
 #' @keywords internal
+#' @noRd
 .save_pages <- function(pages, fpath, width, height) {
   grDevices::pdf(fpath, width = width, height = height, onefile = TRUE)
   for (pg in pages) {

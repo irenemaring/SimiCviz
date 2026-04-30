@@ -86,6 +86,10 @@
 #' @param percentile Percentile used to compute the auxiliary AUC50/x_at_p50
 #'   metrics.
 #' @return A data.frame with one row per TF and per-label ECDF-derived metrics.
+#' @examples
+#' simic <- readRDS(system.file("extdata", "simic_full.rds", package = "SimiCviz"))
+#' ecdf_metrics <- calculate_ecdf_auc(simic, tf_names = simic@tf_ids[1:2])
+#' head(ecdf_metrics)
 #' @export
 calculate_ecdf_auc <- function(x, tf_names = NULL, labels = NULL,
                                integration_range = c(0, 1), percentile = 0.5) {
@@ -158,6 +162,17 @@ calculate_ecdf_auc <- function(x, tf_names = NULL, labels = NULL,
 #' @param out_dir Output directory when \code{save = TRUE}.
 #' @param width,height Output page dimensions.
 #' @return Invisibly, a list of ggplot objects.
+#' @examples
+#' simic <- readRDS(system.file("extdata", "simic_full.rds", package = "SimiCviz"))
+#' plot_auc_distributions(
+#'   simic,
+#'   tf_names  = simic@tf_ids[1:2],
+#'   fill      = TRUE,
+#'   alpha     = 0.6,
+#'   bw_adjust = 1/8,
+#'   rug       = TRUE,
+#'   grid      = c(1L, 2L)
+#' )
 #' @export
 plot_auc_distributions <- function(x, tf_names = NULL, labels = NULL,
                                    fill = TRUE, alpha = 0.5, bw_adjust = 1,
@@ -294,6 +309,14 @@ plot_auc_distributions <- function(x, tf_names = NULL, labels = NULL,
 #' @param out_dir Output directory when \code{save = TRUE}.
 #' @param width,height Output page dimensions.
 #' @return Invisibly, a list of grobs/plots.
+#' @examples
+#' simic <- readRDS(system.file("extdata", "simic_full.rds", package = "SimiCviz"))
+#' plot_auc_cumulative(
+#'   simic,
+#'   tf_names      = simic@tf_ids[1:2],
+#'   rug           = TRUE,
+#'   grid          = c(1L, 2L)
+#' )
 #' @export
 plot_auc_cumulative <- function(x, tf_names = NULL, labels = NULL, alpha = 0.8,
                                 rug = FALSE, grid = c(4L, 2L), percentile = 0.5,
@@ -411,6 +434,9 @@ plot_auc_cumulative <- function(x, tf_names = NULL, labels = NULL, alpha = 0.8,
 #' @param out_dir Output directory when \code{save = TRUE}.
 #' @param width,height Output page dimensions.
 #' @return Invisibly, a named list of plot objects.
+#' @examples
+#' simic <- readRDS(system.file("extdata", "simic_full.rds", package = "SimiCviz"))
+#' plot_auc_summary_statistics(simic)
 #' @export
 plot_auc_summary_statistics <- function(x, labels = NULL, high_threshold = 0.5,
                                         save = FALSE, filename = NULL,
@@ -532,6 +558,9 @@ plot_auc_summary_statistics <- function(x, labels = NULL, high_threshold = 0.5,
 #' @param out_dir Output directory when \code{save = TRUE}.
 #' @param width,height Output page dimensions.
 #' @return Invisibly, the ggplot object.
+#' @examples
+#' simic <- readRDS(system.file("extdata", "simic_full.rds", package = "SimiCviz"))
+#' plot_auc_heatmap(simic, top_n = 5)
 #' @export
 plot_auc_heatmap <- function(x, tf_names = NULL, labels = NULL, top_n = NULL,
                             cmap = "cividis",

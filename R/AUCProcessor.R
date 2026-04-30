@@ -596,10 +596,7 @@ setMethod(
 #' @param expression expression matrix (genes x cells)
 #' @param cell_labels cell-to-label mapping
 #' @return Invisibly returns TRUE if validation passes; raises error otherwise.
-#' @examples
 #' # This is an internal validation function
-#'   .validate_auc_processor_inputs(weights_df, expr_mat, cell_labels)
-#'
 #' @keywords internal
 .validate_auc_processor_inputs <- function(weights, expression, cell_labels) {
   # Check weights

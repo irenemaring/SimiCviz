@@ -29,9 +29,10 @@
 #'   \code{data} (the dissimilarity data.frame).
 #'
 #' @examples
+#'   simic <- readRDS(system.file("extdata", "simic_full.rds", package = "SimiCviz"))
 #'   plot_dissimilarity_heatmap(simic, top_n = 20)
-#'   plot_dissimilarity_heatmap(simic, top_n = 15, cmap = "magma", save = FALSE)
-#'   plot_dissimilarity_heatmap(simic, cmap = c("white", "red", "darkred"))
+#'   plot_dissimilarity_heatmap(simic, top_n = 5, cmap = "magma", save = TRUE, width = 8, height = 10)
+#'   plot_dissimilarity_heatmap(simic, cmap = c("white", "red", "darkred"), show_values = FALSE)
 #' 
 #' @import ggplot2
 #' @rdname plot_dissimilarity_heatmap
@@ -42,7 +43,7 @@ plot_dissimilarity_heatmap <- function(x,
                                        dissim_df = NULL,
                                        cmap = NULL,
                                        show_values = TRUE,
-                                       save = TRUE,
+                                       save = FALSE,
                                        out_dir = getwd(),
                                        filename = NULL,
                                        width = NULL,

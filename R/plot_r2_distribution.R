@@ -25,6 +25,10 @@
 #' @param width,height page dimensions in inches (defaults 10 x 5*nrow).
 #'
 #' @return Called for side effects (plots). Returns \code{invisible(NULL)}.
+#' @examples
+#'   simic <- readRDS(system.file("extdata", "simic_full.rds", package = "SimiCviz"))
+#'   plot_r2_distribution(simic@meta$adjusted_r_squared, simic, grid = c(2, 2))
+#'   plot_r2_distribution(simic@meta$adjusted_r_squared, simic, threshold = 0.9, labels = c(0, 1))
 #' @export
 plot_r2_distribution <- function(adjusted_r_squared,
                                  x = NULL,
